@@ -395,6 +395,7 @@
                                         <th class="p-3 border-b border-zinc-200 dark:border-zinc-800 text-right">Total Assets</th>
                                         <th class="p-3 border-b border-zinc-200 dark:border-zinc-800 text-right">Annual Withdrawal</th>
                                         <th class="p-3 border-b border-zinc-200 dark:border-zinc-800 text-right">State Pension</th>
+                                        <th class="p-3 border-b border-zinc-200 dark:border-zinc-800 text-right">Net After State Pension</th>
                                         <th class="p-3 border-b border-zinc-200 dark:border-zinc-800 text-center">Phase / Notes</th>
                                     </tr>
                                 </thead>
@@ -649,7 +650,7 @@
             let mortgageFreeMonth = null;
             let peakAssets = 0;
 
-            data.push({ year: 0, age: state.currentAge, isa: curIsa, pension: curPen, mortgage: curMort, isRetired: false });
+            data.push({ month: 0, year: 0, age: state.currentAge, isa: curIsa, pension: curPen, mortgage: curMort, isRetired: false });
 
             for (let m = 1; m <= totalMonths; m++) {
                 let age = state.currentAge + (m / 12);
@@ -751,6 +752,7 @@
 
                 if (m % 12 === 0) {
                     data.push({
+                        month: m,
                         year: m / 12,
                         age: Math.floor(age),
                         isa: curIsa,
@@ -867,17 +869,22 @@
             return { rate: (successes / simulations) * 100, stats: { p10, p50, p90 } };
         }
 
-        function populateTable(data, fireYear, baseTargetReal) {
+        function populateTable(data, fireMonth, baseTargetReal) {
             elements.tableBody.innerHTML = "";
+            const firstRetiredRow = data.findIndex(row => row.isRetired && row.month >= fireMonth);
+            const highlightMonth = firstRetiredRow >= 0 ? data[firstRetiredRow].month : null;
+
             data.forEach((row) => {
                 const tr = document.createElement("tr");
                 const totalAssets = row.isa + row.pension - row.mortgage;
                 const annualWithdrawal = row.isRetired ? baseTargetReal : 0;
+                const statePensionAnnual = row.statePension > 0 ? row.statePension : 0;
+                const netAfterStatePension = row.isRetired ? Math.max(0, annualWithdrawal - statePensionAnnual) : 0;
                 
                 let statusBadge = "";
                 let phaseNotes = "";
                 
-                if (row.isRetired && row.year === fireYear) {
+                if (row.isRetired && row.month === highlightMonth) {
                     tr.className = "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-400 font-bold border-l-4 border-emerald-500";
                     statusBadge = `<span class="px-2 py-0.5 rounded-full text-xxs bg-emerald-200 dark:bg-emerald-800 text-emerald-900 dark:text-emerald-100 font-bold">🚀 FIRE ACHIEVED</span>`;
                     phaseNotes = `<div class="text-[10px] text-emerald-700 dark:text-emerald-300 mt-1">Decumulation begins</div>`;
@@ -902,6 +909,7 @@
                     <td class="p-3 text-right font-bold text-zinc-950 dark:text-white">£${Math.round(totalAssets).toLocaleString()}</td>
                     <td class="p-3 text-right font-medium ${row.isRetired ? 'text-amber-600 dark:text-amber-400' : 'text-zinc-400'}">£${row.isRetired ? Math.round(annualWithdrawal).toLocaleString() : '—'}</td>
                     <td class="p-3 text-right font-medium ${row.statePension > 0 ? 'text-teal-600 dark:text-teal-400' : 'text-zinc-400'}">£${row.statePension > 0 ? Math.round(row.statePension).toLocaleString() : '—'}</td>
+                    <td class="p-3 text-right font-medium ${row.isRetired ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-400'}">£${row.isRetired ? Math.round(netAfterStatePension).toLocaleString() : '—'}</td>
                     <td class="p-3 text-center">${statusBadge}${phaseNotes}</td>
                 `;
                 elements.tableBody.appendChild(tr);
@@ -1199,7 +1207,7 @@
             // Calculate SWR at FIRE date
             let swrPercentage = 0;
             if (engine.fireMonth !== null && engine.peakAssets > 0) {
-                swrPercentage = ((engine.baseTargetReal / 12) / engine.peakAssets) * 100;
+                swrPercentage = (engine.baseTargetReal / engine.peakAssets) * 100;
             }
             elements.hudSwr.textContent = `${swrPercentage.toFixed(2)}%`;
             if (swrPercentage <= 4) {
@@ -1250,7 +1258,7 @@
 
             const activeFireYear = engine.fireMonth !== null ? Math.floor(engine.fireMonth / 12) : null;
             if (!elements.viewChart.classList.contains('hidden')) drawChart(engine.data, activeFireYear, mcResults.stats);
-            populateTable(engine.data, activeFireYear, engine.baseTargetReal);
+            populateTable(engine.data, engine.fireMonth, engine.baseTargetReal);
             generateInsights(engine, mcResults, swrPercentage);
         }
 
