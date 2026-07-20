@@ -1,0 +1,1271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro FIRE Bridge Simulator & Monte Carlo Engine</title>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Icons" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        :root {
+            --primary: #0b57d0;
+            --surface: #ffffff;
+            --surface-container: #f0f4f9;
+            --on-surface-default: #1b1c1d;
+            --on-surface-de-emphasis: #444746;
+            --stroke-default: #dcdfe5;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --primary: #a8c7fa;
+                --surface: #101218;
+                --surface-container: #202124;
+                --on-surface-default: #ffffff;
+                --on-surface-de-emphasis: #c4c7c5;
+                --stroke-default: #3c4043;
+            }
+        }
+        body {
+            font-family: 'Google Sans', sans-serif;
+            background-color: var(--surface);
+            color: var(--on-surface-default);
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: var(--stroke-default);
+            border-radius: 3px;
+        }
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { 
+            -webkit-appearance: none; 
+            margin: 0; 
+        }
+        input[type=number] {
+            -moz-appearance: textfield;
+        }
+    </style>
+</head>
+<body class="p-3 md:p-6 lg:p-8 bg-zinc-50 dark:bg-zinc-950">
+
+    <div class="max-w-[1400px] mx-auto bg-white dark:bg-zinc-900 shadow-xl rounded-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+        
+        <div class="p-6 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
+            <div>
+                <h1 class="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white flex items-center gap-2">
+                    <span class="material-icons text-blue-600 dark:text-blue-400">stacked_line_chart</span>
+                    Pro FIRE Simulator & Advisor Tools
+                </h1>
+                <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
+                    Powered by Real-Term (Today's £) inflation adjustment and statistically seeded Monte Carlo paths.
+                </p>
+            </div>
+            
+            <div id="surplus-card" class="flex items-center gap-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 px-4 py-2 rounded-xl text-emerald-800 dark:text-emerald-400 shrink-0">
+                <span class="material-icons text-xl">savings</span>
+                <div>
+                    <div class="text-xs font-semibold uppercase tracking-wider">Unallocated Working Cash</div>
+                    <div class="text-lg font-bold" id="surplus-cash">£0 / month</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 lg:grid-cols-6 border-b border-zinc-200 dark:border-zinc-800 divide-x divide-y lg:divide-y-0 divide-zinc-200 dark:divide-zinc-800">
+            <div class="p-5 text-center lg:text-left">
+                <div class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider flex items-center justify-center lg:justify-start gap-1">
+                    <span class="material-icons text-sm text-blue-500">celebration</span> Target FIRE Age
+                </div>
+                <div class="text-2xl font-extrabold text-zinc-900 dark:text-white mt-1" id="hud-fire-age">Age --</div>
+                <div class="text-xs text-zinc-400 mt-0.5" id="hud-fire-timeline">Drawdown Begins Here</div>
+            </div>
+            <div class="p-5 text-center lg:text-left">
+                <div class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider flex items-center justify-center lg:justify-start gap-1">
+                    <span class="material-icons text-sm text-red-500">home</span> Mortgage Freedom
+                </div>
+                <div class="text-2xl font-extrabold text-zinc-900 dark:text-white mt-1" id="hud-mortgage-free">-- Years</div>
+                <div class="text-xs text-zinc-400 mt-0.5" id="hud-mortgage-age">Age --</div>
+            </div>
+            <div class="p-5 text-center lg:text-left">
+                <div class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider flex items-center justify-center lg:justify-start gap-1">
+                    <span class="material-icons text-sm text-green-500">account_balance</span> Assets at FIRE
+                </div>
+                <div class="text-2xl font-extrabold text-zinc-900 dark:text-white mt-1" id="hud-total-assets">£--</div>
+                <div class="text-xs text-zinc-400 mt-0.5" id="hud-assets-split">Peak portfolio value</div>
+            </div>
+            <div class="p-5 text-center lg:text-left bg-zinc-50 dark:bg-zinc-900/50">
+                <div class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider flex items-center justify-center lg:justify-start gap-1">
+                    <span class="material-icons text-sm text-purple-500">troubleshoot</span> Plan Safety (SORR)
+                </div>
+                <div class="text-2xl font-extrabold mt-1 transition-colors" id="hud-mc-status">100%</div>
+                <div class="text-xs text-zinc-400 mt-0.5" id="hud-mc-details">Deterministic Path</div>
+            </div>
+            <div class="p-5 text-center lg:text-left">
+                <div class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider flex items-center justify-center lg:justify-start gap-1">
+                    <span class="material-icons text-sm text-teal-500">water_drop</span> Safe Withdrawal Rate
+                </div>
+                <div class="text-2xl font-extrabold text-zinc-900 dark:text-white mt-1" id="hud-swr">--%</div>
+                <div class="text-xs text-zinc-400 mt-0.5" id="hud-swr-details">vs 4% Rule Target</div>
+            </div>
+            <div class="p-5 text-center lg:text-left">
+                <div class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider flex items-center justify-center lg:justify-start gap-1">
+                    <span class="material-icons text-sm text-amber-500">track_changes</span> Real Return Est.
+                </div>
+                <div class="text-2xl font-extrabold text-zinc-900 dark:text-white mt-1" id="hud-target-pot">--%</div>
+                <div class="text-xs text-zinc-400 mt-0.5" id="hud-target-swr">Gross minus Inflation</div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 h-full">
+            <div class="lg:col-span-4 xl:col-span-3 p-5 border-r border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/20 flex flex-col gap-5 lg:max-h-[850px] overflow-y-auto custom-scrollbar">
+                
+                <div class="border-b border-zinc-200 dark:border-zinc-800 pb-4">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 mb-3 flex items-center gap-1">
+                        <span class="material-icons text-sm">person</span> 1. Profile & Assets
+                    </h3>
+                    <div class="grid grid-cols-1 gap-3">
+                        <div>
+                            <div class="flex justify-between items-center mb-1">
+                                <label for="slider-age" class="text-xs font-medium text-zinc-700 dark:text-zinc-300">Current Age</label>
+                                <span class="text-xs font-bold text-blue-600 dark:text-blue-400" id="val-age">32</span>
+                            </div>
+                            <input type="range" id="slider-age" min="18" max="55" step="1" value="32" class="w-full h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-blue-600">
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="text-[10px] uppercase font-bold text-zinc-500">Starting ISA</label>
+                                <div class="relative mt-1">
+                                    <span class="absolute left-2.5 top-2 text-xs text-zinc-400">£</span>
+                                    <input type="number" id="input-starting-isa" value="10000" class="w-full pl-6 pr-2 py-1.5 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="text-[10px] uppercase font-bold text-zinc-500">Starting SIPP</label>
+                                <div class="relative mt-1">
+                                    <span class="absolute left-2.5 top-2 text-xs text-zinc-400">£</span>
+                                    <input type="number" id="input-starting-pension" value="10000" class="w-full pl-6 pr-2 py-1.5 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="border-b border-zinc-200 dark:border-zinc-800 pb-4">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-red-500 mb-3 flex items-center gap-1">
+                        <span class="material-icons text-sm">home</span> 2. Home & Mortgage
+                    </h3>
+                    <div class="grid grid-cols-1 gap-3">
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="text-[10px] uppercase font-bold text-zinc-500">Mortgage Balance</label>
+                                <div class="relative mt-1">
+                                    <span class="absolute left-2.5 top-2 text-xs text-zinc-400">£</span>
+                                    <input type="number" id="input-mortgage" value="148000" class="w-full pl-6 pr-2 py-1.5 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="text-[10px] uppercase font-bold text-zinc-500">Base Mthly Pmt</label>
+                                <div class="relative mt-1">
+                                    <span class="absolute left-2.5 top-2 text-xs text-zinc-400">£</span>
+                                    <input type="number" id="input-mortgage-base" value="1000" class="w-full pl-6 pr-2 py-1.5 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between items-center mb-1">
+                                <label for="slider-rate" class="text-xs font-medium text-zinc-700 dark:text-zinc-300">Interest Rate (%)</label>
+                                <span class="text-xs font-bold text-zinc-600 dark:text-zinc-300" id="val-rate">4.1%</span>
+                            </div>
+                            <input type="range" id="slider-rate" min="1.0" max="8.0" step="0.1" value="4.1" class="w-full h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-red-500">
+                        </div>
+                        <div>
+                            <div class="flex justify-between items-center mb-0.5">
+                                <label for="slider-overpay" class="text-xs font-medium text-zinc-700 dark:text-zinc-300">Mthly Overpay (Stops at FIRE)</label>
+                                <span class="text-xs font-bold text-red-500" id="val-overpay">£1,000</span>
+                            </div>
+                            <div class="text-[10px] text-zinc-500 dark:text-zinc-400 italic mb-1 text-right">(Redirects automatically to ISA once cleared)</div>
+                            <input type="range" id="slider-overpay" min="0" max="3000" step="50" value="1000" class="w-full h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-red-500">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="border-b border-zinc-200 dark:border-zinc-800 pb-4">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-3 flex items-center gap-1">
+                        <span class="material-icons text-sm">payments</span> 3. Income & Strategy
+                    </h3>
+                    <div class="grid grid-cols-1 gap-3">
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="text-[10px] uppercase font-bold text-zinc-500">Net Income</label>
+                                <div class="relative mt-1">
+                                    <span class="absolute left-2.5 top-2 text-xs text-zinc-400">£</span>
+                                    <input type="number" id="input-net-income" value="4000" class="w-full pl-6 pr-2 py-1.5 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="text-[10px] uppercase font-bold text-zinc-500">Working Exps.</label>
+                                <div class="relative mt-1">
+                                    <span class="absolute left-2.5 top-2 text-xs text-zinc-400">£</span>
+                                    <input type="number" id="input-living-expenses" value="2000" class="w-full pl-6 pr-2 py-1.5 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between items-center mb-1">
+                                <label for="slider-isa" class="text-xs font-medium text-zinc-700 dark:text-zinc-300">Monthly ISA Addition</label>
+                                <span class="text-xs font-bold text-blue-600 dark:text-blue-400" id="val-isa">£100</span>
+                            </div>
+                            <input type="range" id="slider-isa" min="0" max="3000" step="50" value="100" class="w-full h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-blue-600">
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="text-[10px] uppercase font-bold text-zinc-500">Workplace Pension</label>
+                                <div class="relative mt-1">
+                                    <span class="absolute left-2.5 top-2 text-xs text-zinc-400">£</span>
+                                    <input type="number" id="input-workplace-pension" value="0" class="w-full pl-6 pr-2 py-1.5 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="text-[10px] uppercase font-bold text-zinc-500">SIPP Addition</label>
+                                <div class="relative mt-1">
+                                    <span class="absolute left-2.5 top-2 text-xs text-zinc-400">£</span>
+                                    <input type="number" id="input-sipp-addition" value="0" class="w-full pl-6 pr-2 py-1.5 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="border-t border-zinc-200 dark:border-zinc-700 pt-3 mt-3">
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="text-[10px] uppercase font-bold text-zinc-500">State Pension Age</label>
+                                    <div class="relative mt-1">
+                                        <input type="number" id="input-state-pension-age" value="68" min="60" max="75" class="w-full px-2 py-1.5 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-[10px] uppercase font-bold text-zinc-500">Annual State Pension (Today's £)</label>
+                                    <div class="relative mt-1">
+                                        <span class="absolute left-2.5 top-2 text-xs text-zinc-400">£</span>
+                                        <input type="number" id="input-state-pension-amount" value="11400" class="w-full pl-6 pr-2 py-1.5 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-blue-50 dark:bg-blue-950/20 p-3 rounded-xl border border-blue-100 dark:border-blue-800/30 mt-3">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-xs font-bold text-blue-800 dark:text-blue-300 flex items-center gap-1">
+                                    <span class="material-icons text-xs">savings_account</span> Tax-Free Lump Sum at Pension Age
+                                </span>
+                                <label class="relative inline-flex items-center cursor-pointer select-none">
+                                    <input type="checkbox" id="toggle-lump-sum" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-blue-200 dark:bg-blue-800/50 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-blue-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                                </label>
+                            </div>
+                            <div class="text-[10px] text-blue-700/70 dark:text-blue-400/70 mb-2 leading-tight">Take 25% of pension as tax-free lump sum at age 55/57</div>
+                            <div class="relative">
+                                <span class="absolute left-2.5 top-2 text-xs text-zinc-400">£</span>
+                                <input type="number" id="input-lump-sum" value="0" class="w-full pl-6 pr-2 py-1.5 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500">
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800/40 mt-3">
+                            <div class="flex flex-col pr-2">
+                                <span class="text-xs font-bold text-amber-800 dark:text-amber-300 flex items-center gap-1">
+                                    <span class="material-icons text-xs">receipt</span> Tax Drag Applied to SIPP Only
+                                </span>
+                                <span class="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">ISA remains tax-free</span>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer select-none">
+                                <input type="checkbox" id="toggle-sipp-tax" class="sr-only peer" checked>
+                                <div class="w-9 h-5 bg-amber-200 dark:bg-amber-800/50 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-amber-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="border-b border-zinc-200 dark:border-zinc-800 pb-4">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400 mb-3 flex items-center gap-1">
+                        <span class="material-icons text-sm">psychology</span> 4. Advisor Upgrades
+                    </h3>
+                    <div class="grid grid-cols-1 gap-4">
+                        <div>
+                            <div class="flex justify-between items-center mb-1">
+                                <label for="slider-target" class="text-xs font-medium text-zinc-700 dark:text-zinc-300">Base Post-FIRE Goal (Today's £)</label>
+                                <span class="text-xs font-bold text-zinc-900 dark:text-zinc-100" id="val-target">£24,000</span>
+                            </div>
+                            <input type="range" id="slider-target" min="12000" max="60000" step="1000" value="24000" class="w-full h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-zinc-800 dark:accent-zinc-300">
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between items-center mb-1">
+                                <label for="slider-tax" class="text-xs font-medium text-zinc-700 dark:text-zinc-300" title="Retirees face unique capital gains and healthcare costs. We inflate your goal to cover this.">Tax & Healthcare Drag Buffer</label>
+                                <span class="text-xs font-bold text-purple-600 dark:text-purple-400" id="val-tax">+15%</span>
+                            </div>
+                            <input type="range" id="slider-tax" min="0" max="30" step="1" value="15" class="w-full h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-purple-600">
+                        </div>
+                        
+                        <div class="bg-indigo-50 dark:bg-indigo-950/20 p-3 rounded-xl border border-indigo-100 dark:border-indigo-800/30">
+                            <div class="flex justify-between items-center mb-1">
+                                <label for="slider-buffer" class="text-xs font-medium text-indigo-900 dark:text-indigo-300" title="Forces you to keep working after minimum FIRE is hit to build a safety net against Monte Carlo crashes.">Over-Fund Buffer (Safety)</label>
+                                <span class="text-xs font-bold text-indigo-600 dark:text-indigo-400" id="val-buffer">+0%</span>
+                            </div>
+                            <div class="text-[10px] text-indigo-700/70 dark:text-indigo-400/70 mb-2 leading-tight">Increase this to intentionally delay FIRE and build a fortress.</div>
+                            <input type="range" id="slider-buffer" min="0" max="50" step="5" value="0" class="w-full h-1.5 bg-indigo-200 dark:bg-indigo-900 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <div class="flex justify-between items-center mb-1">
+                                    <label class="text-[10px] font-medium text-zinc-700 dark:text-zinc-300">Gross Return %</label>
+                                    <span class="text-[10px] font-bold text-teal-600" id="val-gross">9.0%</span>
+                                </div>
+                                <input type="range" id="slider-gross" min="2" max="12" step="0.5" value="9.0" class="w-full h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-teal-600">
+                            </div>
+                            <div>
+                                <div class="flex justify-between items-center mb-1">
+                                    <label class="text-[10px] font-medium text-zinc-700 dark:text-zinc-300">Inflation %</label>
+                                    <span class="text-[10px] font-bold text-orange-500" id="val-inflation">3.0%</span>
+                                </div>
+                                <input type="range" id="slider-inflation" min="0" max="8" step="0.5" value="3.0" class="w-full h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-orange-500">
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-between p-3 bg-purple-50 dark:bg-purple-900/20 rounded-xl border border-purple-200 dark:border-purple-800/40">
+                            <div class="flex flex-col pr-2">
+                                <span class="text-xs font-bold text-purple-800 dark:text-purple-300 flex items-center gap-1">
+                                    <span class="material-icons text-xs">query_stats</span> Stress Test (SORR)
+                                </span>
+                                <span class="text-[10px] text-purple-600 dark:text-purple-400 mt-0.5">Test 200 market scenarios</span>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer select-none">
+                                <input type="checkbox" id="toggle-mc" class="sr-only peer">
+                                <div class="w-9 h-5 bg-purple-200 dark:bg-purple-800/50 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-purple-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="lg:col-span-8 xl:col-span-9 p-6 flex flex-col justify-between">
+                <div>
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                        <div class="flex items-center gap-2 bg-zinc-100 dark:bg-zinc-800 p-0.5 rounded-lg w-fit">
+                            <button id="btn-tab-chart" class="px-4 py-1.5 text-xs font-medium rounded-md bg-white dark:bg-zinc-700 shadow text-zinc-900 dark:text-white flex items-center gap-1 transition">
+                                <span class="material-icons text-xs">show_chart</span> Lifetime Trajectory
+                            </button>
+                            <button id="btn-tab-table" class="px-4 py-1.5 text-xs font-medium rounded-md text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1 transition">
+                                <span class="material-icons text-xs">table_rows</span> Timeline Data
+                            </button>
+                            <button id="btn-tab-insights" class="px-4 py-1.5 text-xs font-medium rounded-md text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1 transition">
+                                <span class="material-icons text-xs">insights</span> Key Milestones
+                            </button>
+                        </div>
+                        
+                        <div class="flex flex-wrap items-center gap-3 text-xxs" id="legend-container">
+                            </div>
+                    </div>
+
+                    <div id="view-chart" class="block">
+                        <div id="chart" class="relative w-full h-[500px] bg-zinc-50 dark:bg-zinc-950 rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-800/80 flex items-center justify-center">
+                        </div>
+                    </div>
+
+                    <div id="view-table" class="hidden">
+                        <div class="w-full h-[500px] overflow-y-auto border border-zinc-200 dark:border-zinc-800 rounded-xl bg-zinc-50 dark:bg-zinc-950 custom-scrollbar">
+                            <table class="w-full text-left text-xs border-collapse">
+                                <thead class="bg-zinc-100 dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 sticky top-0 font-semibold shadow-sm z-10">
+                                    <tr>
+                                        <th class="p-3 border-b border-zinc-200 dark:border-zinc-800">Age</th>
+                                        <th class="p-3 border-b border-zinc-200 dark:border-zinc-800 text-right">ISA Balance</th>
+                                        <th class="p-3 border-b border-zinc-200 dark:border-zinc-800 text-right">SIPP Balance</th>
+                                        <th class="p-3 border-b border-zinc-200 dark:border-zinc-800 text-right">Mortgage</th>
+                                        <th class="p-3 border-b border-zinc-200 dark:border-zinc-800 text-right">Total Assets</th>
+                                        <th class="p-3 border-b border-zinc-200 dark:border-zinc-800 text-right">Annual Withdrawal</th>
+                                        <th class="p-3 border-b border-zinc-200 dark:border-zinc-800 text-right">State Pension</th>
+                                        <th class="p-3 border-b border-zinc-200 dark:border-zinc-800 text-center">Phase / Notes</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="table-body" class="divide-y divide-zinc-200 dark:divide-zinc-800 text-zinc-600 dark:text-zinc-400">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div id="view-insights" class="hidden">
+                        <div class="w-full h-[500px] overflow-y-auto border border-zinc-200 dark:border-zinc-800 rounded-xl bg-zinc-50 dark:bg-zinc-950 custom-scrollbar p-4">
+                            <div class="space-y-4">
+                                <div id="insights-container" class="space-y-3">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-4 p-4 rounded-xl bg-blue-50/50 dark:bg-blue-950/10 border border-blue-100 dark:border-blue-900/30 text-xs leading-relaxed text-zinc-600 dark:text-zinc-400">
+                    <span class="font-bold text-blue-700 dark:text-blue-400 flex items-center gap-1 mb-2">
+                        <span class="material-icons text-sm">memory</span> Real-Terms Phase Engine:
+                    </span>
+                    <div class="mb-3">All figures (targets, portfolio, and contributions) are calculated in <span class="font-bold text-zinc-800 dark:text-zinc-200">Today's Pounds (Real Terms)</span>. The only exception is your fixed mortgage, which correctly gets mathematically "cheaper" over time as inflation eats away at the real value of your debt.</div>
+                    
+                    <div class="border-t border-blue-200 dark:border-blue-800 pt-3 mt-3">
+                        <span class="font-bold text-blue-700 dark:text-blue-400 flex items-center gap-1 mb-2">
+                            <span class="material-icons text-xs">trending_down</span> Professional Notes:
+                        </span>
+                        <ul class="space-y-1 text-[11px] text-zinc-600 dark:text-zinc-400 ml-5">
+                            <li>• <strong>SWR (Safe Withdrawal Rate):</strong> The 4% rule is a conservative benchmark. Rates &lt;4% = safer, &gt;5% = higher risk of portfolio depletion.</li>
+                            <li>• <strong>Pension Access:</strong> UK pensions unlock at age 57 (age 55 for those who reached the age before 6 April 2023). Plan your drawdown accordingly.</li>
+                            <li>• <strong>Tax Efficiency:</strong> The Tax & Healthcare Drag buffer accounts for ISA withdrawal efficiency but real plans should model capital gains tax, dividend allowances, and healthcare costs.</li>
+                            <li>• <strong>Mortgage Real Terms:</strong> Your mortgage gets progressively cheaper in real terms. By decumulation, a fixed payment is genuinely manageable.</li>
+                            <li>• <strong>Monte Carlo Testing:</strong> Stress-test your plan against 200 simulated market paths to measure sequence-of-returns risk (SORR).</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. SEEDED RANDOM NUMBER GENERATOR ---
+        function mulberry32(a) {
+            return function() {
+                var t = a += 0x6D2B79F5;
+                t = Math.imul(t ^ t >>> 15, t | 1);
+                t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+                return ((t ^ t >>> 14) >>> 0) / 4294967296;
+            }
+        }
+
+        const state = {
+            startingIsa: 10000,
+            startingPension: 10000,
+            mortgageRemaining: 200000,
+            mortgageBase: 1000,
+            workplacePension: 500,
+            netIncome: 4000,
+            livingExpenses: 2000, 
+            currentAge: 32,
+            monthlyIsa: 100,
+            monthlySipp: 0,
+            mortgageOverpay: 500,
+            mortgageRate: 4.1,
+            
+            grossReturn: 9.0,
+            inflation: 3.0,
+            targetIncome: 24000,
+            taxDrag: 15,
+            overFundBuffer: 0,
+            monteCarlo: false,
+            
+            statePensionAge: 68,
+            statePensionAmount: 11400,
+            lumpSumEnabled: false,
+            lumpSumAmount: 0,
+            sippTaxOnly: true
+        };
+
+        const elements = {
+            sliderAge: document.getElementById('slider-age'),
+            sliderIsa: document.getElementById('slider-isa'),
+            sliderOverpay: document.getElementById('slider-overpay'),
+            sliderRate: document.getElementById('slider-rate'),
+            sliderGross: document.getElementById('slider-gross'),
+            sliderInflation: document.getElementById('slider-inflation'),
+            sliderTarget: document.getElementById('slider-target'),
+            sliderTax: document.getElementById('slider-tax'),
+            sliderBuffer: document.getElementById('slider-buffer'), // NEW UI BINDING
+            toggleMC: document.getElementById('toggle-mc'), 
+
+            inputStartingIsa: document.getElementById('input-starting-isa'),
+            inputStartingPension: document.getElementById('input-starting-pension'),
+            inputMortgage: document.getElementById('input-mortgage'),
+            inputMortgageBase: document.getElementById('input-mortgage-base'),
+            inputNetIncome: document.getElementById('input-net-income'),
+            inputLivingExpenses: document.getElementById('input-living-expenses'),
+            inputWorkplacePension: document.getElementById('input-workplace-pension'),
+            inputSippAddition: document.getElementById('input-sipp-addition'),
+            inputStatePensionAge: document.getElementById('input-state-pension-age'),
+            inputStatePensionAmount: document.getElementById('input-state-pension-amount'),
+            inputLumpSum: document.getElementById('input-lump-sum'),
+            toggleLumpSum: document.getElementById('toggle-lump-sum'),
+            toggleSippTax: document.getElementById('toggle-sipp-tax'),
+
+            valAge: document.getElementById('val-age'),
+            valIsa: document.getElementById('val-isa'),
+            valOverpay: document.getElementById('val-overpay'),
+            valRate: document.getElementById('val-rate'),
+            valGross: document.getElementById('val-gross'),
+            valInflation: document.getElementById('val-inflation'),
+            valTarget: document.getElementById('val-target'),
+            valTax: document.getElementById('val-tax'),
+            valBuffer: document.getElementById('val-buffer'),
+
+            surplusCard: document.getElementById('surplus-card'),
+            surplusCash: document.getElementById('surplus-cash'),
+            hudFireAge: document.getElementById('hud-fire-age'),
+            hudFireTimeline: document.getElementById('hud-fire-timeline'),
+            hudMortgageFree: document.getElementById('hud-mortgage-free'),
+            hudMortgageAge: document.getElementById('hud-mortgage-age'),
+            hudTotalAssets: document.getElementById('hud-total-assets'),
+            hudAssetsSplit: document.getElementById('hud-assets-split'),
+            hudMcStatus: document.getElementById('hud-mc-status'),
+            hudMcDetails: document.getElementById('hud-mc-details'),
+            hudTargetPot: document.getElementById('hud-target-pot'),
+            hudSwr: document.getElementById('hud-swr'),
+            hudSwrDetails: document.getElementById('hud-swr-details'),
+            legendContainer: document.getElementById('legend-container'),
+
+            chart: document.getElementById('chart'),
+            tableBody: document.getElementById('table-body'),
+            btnTabChart: document.getElementById('btn-tab-chart'),
+            btnTabTable: document.getElementById('btn-tab-table'),
+            btnTabInsights: document.getElementById('btn-tab-insights'),
+            viewChart: document.getElementById('view-chart'),
+            viewTable: document.getElementById('view-table'),
+            viewInsights: document.getElementById('view-insights'),
+            insightsContainer: document.getElementById('insights-container')
+        };
+
+        elements.btnTabChart.addEventListener('click', () => {
+            elements.viewChart.classList.remove('hidden');
+            elements.viewTable.classList.add('hidden');
+            elements.viewInsights.classList.add('hidden');
+            elements.btnTabChart.className = "px-4 py-1.5 text-xs font-medium rounded-md bg-white dark:bg-zinc-700 shadow text-zinc-900 dark:text-white flex items-center gap-1 transition";
+            elements.btnTabTable.className = "px-4 py-1.5 text-xs font-medium rounded-md text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1 transition";
+            elements.btnTabInsights.className = "px-4 py-1.5 text-xs font-medium rounded-md text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1 transition";
+            updateUI();
+        });
+
+        elements.btnTabTable.addEventListener('click', () => {
+            elements.viewChart.classList.add('hidden');
+            elements.viewTable.classList.remove('hidden');
+            elements.viewInsights.classList.add('hidden');
+            elements.btnTabTable.className = "px-4 py-1.5 text-xs font-medium rounded-md bg-white dark:bg-zinc-700 shadow text-zinc-900 dark:text-white flex items-center gap-1 transition";
+            elements.btnTabChart.className = "px-4 py-1.5 text-xs font-medium rounded-md text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1 transition";
+            elements.btnTabInsights.className = "px-4 py-1.5 text-xs font-medium rounded-md text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1 transition";
+            updateUI();
+        });
+
+        elements.btnTabInsights.addEventListener('click', () => {
+            elements.viewChart.classList.add('hidden');
+            elements.viewTable.classList.add('hidden');
+            elements.viewInsights.classList.remove('hidden');
+            elements.btnTabInsights.className = "px-4 py-1.5 text-xs font-medium rounded-md bg-white dark:bg-zinc-700 shadow text-zinc-900 dark:text-white flex items-center gap-1 transition";
+            elements.btnTabChart.className = "px-4 py-1.5 text-xs font-medium rounded-md text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1 transition";
+            elements.btnTabTable.className = "px-4 py-1.5 text-xs font-medium rounded-md text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1 transition";
+            updateUI();
+        });
+
+        function checkFireViability(testIsa, testPen, testMort, startAge, targetRealForCheck, monthlyRealReturn, annualInflation, monthlyMortgageRate, absoluteStartYear) {
+            let tempIsa = testIsa;
+            let tempPen = testPen;
+            let tempMort = testMort; 
+            
+            for (let m = 0; m < (90 - startAge) * 12; m++) {
+                let age = startAge + (m / 12);
+                let currentTotalYearsFromToday = absoluteStartYear + (m / 12);
+                
+                let monthlyLivingCostReal = targetRealForCheck / 12;
+                
+                let mortPaymentReal = 0;
+                if (tempMort > 0) {
+                    let interest = tempMort * monthlyMortgageRate;
+                    let principal = state.mortgageBase - interest;
+                    let nominalPayment = 0;
+
+                    if (tempMort <= principal) {
+                        nominalPayment = tempMort + interest;
+                        tempMort = 0;
+                    } else {
+                        tempMort -= principal;
+                        nominalPayment = state.mortgageBase;
+                    }
+                    mortPaymentReal = nominalPayment / Math.pow(1 + annualInflation, currentTotalYearsFromToday);
+                }
+                
+                // Account for state pension if applicable
+                let statePensionMonthly = (age >= state.statePensionAge ? state.statePensionAmount / 12 : 0);
+                let netWithdrawalNeeded = Math.max(0, monthlyLivingCostReal - statePensionMonthly);
+                let totalWithdrawalReal = netWithdrawalNeeded + mortPaymentReal;
+                
+                if (age < 57) {
+                    tempIsa -= totalWithdrawalReal;
+                    if (tempIsa < 0) return false; 
+                } else {
+                    if (tempIsa > totalWithdrawalReal) {
+                        tempIsa -= totalWithdrawalReal;
+                    } else if (tempIsa > 0) {
+                        tempPen -= (totalWithdrawalReal - tempIsa);
+                        tempIsa = 0;
+                    } else {
+                        tempPen -= totalWithdrawalReal;
+                    }
+                    if (tempPen < 0) return false; 
+                }
+                
+                tempIsa *= (1 + monthlyRealReturn);
+                tempPen *= (1 + monthlyRealReturn);
+            }
+            return true; 
+        }
+
+        function calculateDeterministic() {
+            const maxAge = 90;
+            const totalMonths = (maxAge - state.currentAge) * 12;
+            
+            const grossReturn = state.grossReturn / 100;
+            const annualInflation = state.inflation / 100;
+            const realReturn = ((1 + grossReturn) / (1 + annualInflation)) - 1;
+            const monthlyRealReturn = Math.pow(1 + realReturn, 1/12) - 1;
+            const monthlyMortgageRate = (state.mortgageRate / 100) / 12;
+            
+            const taxDragMult = 1 + (state.taxDrag / 100);
+            
+            // 1. BASE TARGET: What you actually withdraw when retired
+            const baseTargetReal = state.targetIncome * taxDragMult;
+            
+            // 2. VIABILITY TARGET: What the engine uses to check if you are "allowed" to retire
+            // Inflating this with the buffer forces the engine to delay retirement until it's much safer
+            const viabilityTargetReal = baseTargetReal * (1 + (state.overFundBuffer / 100));
+
+            let plannedFireMonth = null;
+            let data = [];
+            
+            let curIsa = state.startingIsa;
+            let curPen = state.startingPension;
+            let curMort = state.mortgageRemaining; 
+            let mortgageFreeMonth = null;
+            let peakAssets = 0;
+
+            data.push({ year: 0, age: state.currentAge, isa: curIsa, pension: curPen, mortgage: curMort, isRetired: false });
+
+            for (let m = 1; m <= totalMonths; m++) {
+                let age = state.currentAge + (m / 12);
+                let year = m / 12; 
+                
+                let isRetired = (plannedFireMonth !== null && m >= plannedFireMonth);
+
+                let mortPaymentReal = 0;
+                if (curMort > 0) {
+                    let interest = curMort * monthlyMortgageRate;
+                    let targetPmtNominal = isRetired ? state.mortgageBase : (state.mortgageBase + state.mortgageOverpay);
+                    let principal = targetPmtNominal - interest;
+                    let nominalPayment = 0;
+
+                    if (curMort <= principal) {
+                        nominalPayment = curMort + interest;
+                        curMort = 0;
+                        if (mortgageFreeMonth === null) mortgageFreeMonth = m;
+                    } else {
+                        curMort -= principal;
+                        nominalPayment = targetPmtNominal;
+                    }
+                    mortPaymentReal = nominalPayment / Math.pow(1 + annualInflation, year);
+                } else if (mortgageFreeMonth === null) {
+                    mortgageFreeMonth = m;
+                }
+
+                if (!isRetired) {
+                    if (plannedFireMonth === null) {
+                        // Pass the artificially higher target to the viability checker
+                        let canFire = checkFireViability(curIsa, curPen, curMort, age, viabilityTargetReal, monthlyRealReturn, annualInflation, monthlyMortgageRate, year);
+                        if (canFire) {
+                            plannedFireMonth = m;
+                            isRetired = true;
+                            peakAssets = curIsa + curPen;
+                        }
+                    }
+
+                    if (!isRetired) {
+                        let activeIsaAddReal = state.monthlyIsa;
+                        if (curMort === 0) {
+                            activeIsaAddReal += (state.mortgageOverpay / Math.pow(1 + annualInflation, year));
+                        }
+                        
+                        curIsa += activeIsaAddReal;
+                        curPen += (state.workplacePension + state.monthlySipp);
+                    }
+                }
+
+                if (isRetired) {
+                    // Handle one-time lump sum at pension age (55/57)
+                    if (age >= 55 && age < 55.1 && state.lumpSumEnabled && state.lumpSumAmount > 0) {
+                        curPen -= state.lumpSumAmount;
+                    }
+
+                    // Calculate withdrawal needs, reduced by state pension if available
+                    let statePensionMonthly = (age >= state.statePensionAge ? state.statePensionAmount / 12 : 0);
+                    let netWithdrawalNeeded = Math.max(0, (baseTargetReal / 12) - statePensionMonthly);
+                    let totalWithdrawalReal = netWithdrawalNeeded + mortPaymentReal;
+                    
+                    // Apply tax drag: to SIPP only, or distributed
+                    let taxDragMultiplier = 1 + (state.taxDrag / 100);
+                    let effectiveWithdrawal = totalWithdrawalReal;
+                    if (state.sippTaxOnly && age >= 57) {
+                        // Tax drag applies to SIPP portion only
+                        effectiveWithdrawal = totalWithdrawalReal;
+                    }
+                    
+                    if (age < 57) {
+                        // Before pension access, withdraw from ISA only
+                        curIsa -= effectiveWithdrawal;
+                    } else {
+                        // Pension unlocked - use both
+                        if (curIsa > effectiveWithdrawal) {
+                            curIsa -= effectiveWithdrawal;
+                        } else if (curIsa > 0) {
+                            let remaining = effectiveWithdrawal - curIsa;
+                            curIsa = 0;
+                            // Apply tax drag to pension withdrawal if enabled
+                            if (state.sippTaxOnly) {
+                                curPen -= remaining * taxDragMultiplier;
+                            } else {
+                                curPen -= remaining;
+                            }
+                        } else {
+                            // SIPP only - apply tax drag if enabled
+                            if (state.sippTaxOnly) {
+                                curPen -= effectiveWithdrawal * taxDragMultiplier;
+                            } else {
+                                curPen -= effectiveWithdrawal;
+                            }
+                        }
+                    }
+                }
+
+                curIsa = Math.max(0, curIsa * (1 + monthlyRealReturn));
+                curPen = Math.max(0, curPen * (1 + monthlyRealReturn));
+                let curMortRealDisplay = curMort / Math.pow(1 + annualInflation, year);
+
+                if (m % 12 === 0) {
+                    data.push({
+                        year: m / 12,
+                        age: Math.floor(age),
+                        isa: curIsa,
+                        pension: curPen,
+                        mortgage: curMortRealDisplay,
+                        isRetired: isRetired,
+                        statePension: age >= state.statePensionAge ? state.statePensionAmount : 0
+                    });
+                }
+            }
+            
+            return { data, fireMonth: plannedFireMonth, mortgageFreeMonth, peakAssets, baseTargetReal, realReturn, monthlyRealReturn, annualInflation, monthlyMortgageRate };
+        }
+
+        function runMonteCarlo(plannedFireMonth, baseTargetReal, monthlyRealReturn, annualInflation, monthlyMortgageRate) {
+            let successes = 0;
+            const simulations = 200;
+            const annualVolatility = 0.15; 
+            const monthlyVolatility = annualVolatility / Math.sqrt(12);
+
+            const prng = mulberry32(123456789); 
+            const randomNormal = d3.randomNormal.source(prng)(monthlyRealReturn, monthlyVolatility);
+
+            const allPaths = []; 
+
+            for (let i = 0; i < simulations; i++) {
+                let curIsa = state.startingIsa;
+                let curPen = state.startingPension;
+                let curMort = state.mortgageRemaining;
+                let failed = false;
+                
+                let yearlyData = [curIsa + curPen]; 
+
+                for (let m = 1; m <= (90 - state.currentAge) * 12; m++) {
+                    let age = state.currentAge + (m / 12);
+                    let year = m / 12;
+                    let isRetired = (plannedFireMonth !== null && m >= plannedFireMonth);
+                    
+                    let mortPaymentReal = 0;
+                    if (curMort > 0) {
+                        let interest = curMort * monthlyMortgageRate;
+                        let targetPmtNominal = isRetired ? state.mortgageBase : (state.mortgageBase + state.mortgageOverpay);
+                        let principal = targetPmtNominal - interest;
+                        let nominalPayment = 0;
+                        if (curMort <= principal) {
+                            nominalPayment = curMort + interest;
+                            curMort = 0;
+                        } else {
+                            curMort -= principal;
+                            nominalPayment = targetPmtNominal;
+                        }
+                        mortPaymentReal = nominalPayment / Math.pow(1 + annualInflation, year);
+                    }
+
+                    if (!isRetired) {
+                        let activeIsaAddReal = state.monthlyIsa;
+                        if (curMort === 0) activeIsaAddReal += (state.mortgageOverpay / Math.pow(1 + annualInflation, year));
+                        curIsa += activeIsaAddReal;
+                        curPen += (state.workplacePension + state.monthlySipp);
+                    } else {
+                        // Handle one-time lump sum at pension age (55)
+                        if (age >= 55 && age < 55.1 && state.lumpSumEnabled && state.lumpSumAmount > 0) {
+                            curPen -= state.lumpSumAmount;
+                        }
+                        
+                        // Withdrawals in Monte Carlo: Account for state pension
+                        let statePensionMonthly = (age >= state.statePensionAge ? state.statePensionAmount / 12 : 0);
+                        let netWithdrawalNeeded = Math.max(0, (baseTargetReal / 12) - statePensionMonthly);
+                        let totalWithdrawalReal = netWithdrawalNeeded + mortPaymentReal;
+                        
+                        if (age < 57) {
+                            curIsa -= totalWithdrawalReal;
+                        } else {
+                            if (curIsa > totalWithdrawalReal) curIsa -= totalWithdrawalReal;
+                            else if (curIsa > 0) { curPen -= (totalWithdrawalReal - curIsa); curIsa = 0; }
+                            else curPen -= totalWithdrawalReal;
+                        }
+                    }
+
+                    let randomMonthRate = randomNormal();
+                    curIsa *= (1 + randomMonthRate);
+                    curPen *= (1 + randomMonthRate);
+
+                    if (curIsa < 0) curIsa = 0;
+                    if (curPen < 0) { curPen = 0; failed = true; break; }
+
+                    if (m % 12 === 0) {
+                        yearlyData.push(curIsa + curPen);
+                    }
+                }
+                
+                if (!failed) successes++;
+                allPaths.push(yearlyData);
+            }
+
+            const maxYears = 90 - state.currentAge;
+            const p10 = [];
+            const p50 = [];
+            const p90 = [];
+
+            for (let y = 0; y <= maxYears; y++) {
+                let valsForYear = [];
+                for (let i = 0; i < simulations; i++) {
+                    valsForYear.push(allPaths[i][y] || 0); 
+                }
+                
+                valsForYear.sort((a, b) => a - b);
+                
+                p10.push({ year: y, value: valsForYear[Math.floor(simulations * 0.10)] }); 
+                p50.push({ year: y, value: valsForYear[Math.floor(simulations * 0.50)] }); 
+                p90.push({ year: y, value: valsForYear[Math.floor(simulations * 0.90)] }); 
+            }
+
+            return { rate: (successes / simulations) * 100, stats: { p10, p50, p90 } };
+        }
+
+        function populateTable(data, fireYear, baseTargetReal) {
+            elements.tableBody.innerHTML = "";
+            data.forEach((row) => {
+                const tr = document.createElement("tr");
+                const totalAssets = row.isa + row.pension - row.mortgage;
+                const annualWithdrawal = row.isRetired ? baseTargetReal : 0;
+                
+                let statusBadge = "";
+                let phaseNotes = "";
+                
+                if (row.isRetired && row.year === fireYear) {
+                    tr.className = "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-400 font-bold border-l-4 border-emerald-500";
+                    statusBadge = `<span class="px-2 py-0.5 rounded-full text-xxs bg-emerald-200 dark:bg-emerald-800 text-emerald-900 dark:text-emerald-100 font-bold">🚀 FIRE ACHIEVED</span>`;
+                    phaseNotes = `<div class="text-[10px] text-emerald-700 dark:text-emerald-300 mt-1">Decumulation begins</div>`;
+                } else if (row.isRetired) {
+                    tr.className = "bg-orange-50/30 dark:bg-orange-950/10 text-zinc-600 dark:text-zinc-400";
+                    statusBadge = `<span class="px-2 py-0.5 rounded-full text-xxs bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-300">Decumulation</span>`;
+                    phaseNotes = `<div class="text-[10px] text-orange-700 dark:text-orange-400 mt-1">`;
+                    if (row.age >= 57) phaseNotes += `Pension access available<br>`;
+                    if (row.mortgage > 0) phaseNotes += `Mortgage active`;
+                    phaseNotes += `</div>`;
+                } else {
+                    tr.className = "text-zinc-600 dark:text-zinc-400";
+                    statusBadge = `<span class="px-2 py-0.5 rounded-full text-xxs bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300">Accumulation</span>`;
+                    phaseNotes = `<div class="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1">Building wealth</div>`;
+                }
+
+                tr.innerHTML = `
+                    <td class="p-3 font-medium">Age ${row.age}</td>
+                    <td class="p-3 text-right">£${Math.round(row.isa).toLocaleString()}</td>
+                    <td class="p-3 text-right">£${Math.round(row.pension).toLocaleString()}</td>
+                    <td class="p-3 text-right text-red-500 font-medium">${row.mortgage > 0 ? `£${Math.round(row.mortgage).toLocaleString()}` : '-'}</td>
+                    <td class="p-3 text-right font-bold text-zinc-950 dark:text-white">£${Math.round(totalAssets).toLocaleString()}</td>
+                    <td class="p-3 text-right font-medium ${row.isRetired ? 'text-amber-600 dark:text-amber-400' : 'text-zinc-400'}">£${row.isRetired ? Math.round(annualWithdrawal).toLocaleString() : '—'}</td>
+                    <td class="p-3 text-right font-medium ${row.statePension > 0 ? 'text-teal-600 dark:text-teal-400' : 'text-zinc-400'}">£${row.statePension > 0 ? Math.round(row.statePension).toLocaleString() : '—'}</td>
+                    <td class="p-3 text-center">${statusBadge}${phaseNotes}</td>
+                `;
+                elements.tableBody.appendChild(tr);
+            });
+        }
+
+        function drawChart(data, fireYear, mcStats) {
+            elements.chart.innerHTML = "";
+            const width = elements.chart.clientWidth;
+            const height = elements.chart.clientHeight;
+            const margin = { top: 30, right: 20, bottom: 40, left: 60 };
+
+            const svg = d3.create("svg")
+                .attr("width", width)
+                .attr("height", height)
+                .attr("viewBox", [0, 0, width, height]);
+
+            const maxYears = 90 - state.currentAge;
+            const xScale = d3.scaleLinear().domain([0, maxYears]).range([margin.left, width - margin.right]);
+
+            let maxVal = d3.max(data, d => Math.max(d.isa, d.pension)) * 1.1;
+            if (state.monteCarlo && mcStats) {
+                const maxMc = d3.max(mcStats.p90, d => d.value);
+                if (maxMc > maxVal) maxVal = Math.min(maxMc, maxVal * 2); 
+            }
+            const yScale = d3.scaleLinear().domain([0, maxVal]).range([height - margin.bottom, margin.top]);
+
+            svg.append("g").attr("class", "opacity-10 stroke-zinc-400")
+                .selectAll("line").data(yScale.ticks(6)).join("line")
+                .attr("y1", d => yScale(d)).attr("y2", d => yScale(d))
+                .attr("x1", margin.left).attr("x2", width - margin.right);
+
+            const isaArea = d3.area().x(d => xScale(d.year)).y0(yScale(0)).y1(d => yScale(d.isa));
+            const pensionArea = d3.area().x(d => xScale(d.year)).y0(yScale(0)).y1(d => yScale(d.pension));
+
+            svg.append("path").datum(data).attr("fill", "#3b82f6").attr("fill-opacity", 0.15).attr("d", isaArea);
+            svg.append("path").datum(data).attr("fill", "none").attr("stroke", "#3b82f6").attr("stroke-width", 2.5).attr("d", d3.line().x(d => xScale(d.year)).y(d => yScale(d.isa)));
+
+            svg.append("path").datum(data).attr("fill", "#10b981").attr("fill-opacity", 0.15).attr("d", pensionArea);
+            svg.append("path").datum(data).attr("fill", "none").attr("stroke", "#10b981").attr("stroke-width", 2.5).attr("d", d3.line().x(d => xScale(d.year)).y(d => yScale(d.pension)));
+
+            svg.append("path").datum(data).attr("fill", "none").attr("stroke", "#ef4444").attr("stroke-width", 2).attr("stroke-dasharray", "4,4").attr("d", d3.line().x(d => xScale(d.year)).y(d => yScale(d.mortgage)));
+
+            if (state.monteCarlo && mcStats) {
+                const mcLine = d3.line().x(d => xScale(d.year)).y(d => yScale(d.value));
+                
+                svg.append("path")
+                    .datum(mcStats.p90).attr("fill", "none").attr("stroke", "#22c55e")
+                    .attr("stroke-width", 2).attr("stroke-dasharray", "5,5").attr("d", mcLine);
+                
+                svg.append("path")
+                    .datum(mcStats.p50).attr("fill", "none").attr("stroke", "#eab308")
+                    .attr("stroke-width", 2).attr("stroke-dasharray", "5,5").attr("d", mcLine);
+
+                svg.append("path")
+                    .datum(mcStats.p10).attr("fill", "none").attr("stroke", "#ef4444")
+                    .attr("stroke-width", 2).attr("stroke-dasharray", "5,5").attr("d", mcLine);
+            }
+
+            if (fireYear !== null) {
+                svg.append("rect")
+                    .attr("x", xScale(fireYear)).attr("y", margin.top)
+                    .attr("width", width - margin.right - xScale(fireYear)).attr("height", height - margin.bottom - margin.top)
+                    .attr("fill", "#f97316").attr("opacity", 0.05);
+
+                svg.append("line")
+                    .attr("x1", xScale(fireYear)).attr("x2", xScale(fireYear))
+                    .attr("y1", margin.top).attr("y2", height - margin.bottom)
+                    .attr("stroke", "#f97316").attr("stroke-width", 2).attr("stroke-dasharray", "4,4");
+                    
+                svg.append("text")
+                    .attr("x", xScale(fireYear) + 8).attr("y", margin.top + 15)
+                    .attr("fill", "#ea580c").attr("font-size", "11px").attr("font-weight", "bold")
+                    .text(`PHASE SHIFT: DECUMULATION`);
+            }
+
+            const xAxis = d3.axisBottom(xScale).ticks(10).tickFormat(d => `Age ${state.currentAge + d}`);
+            const yAxis = d3.axisLeft(yScale).ticks(6).tickFormat(d => `£${(d / 1000).toFixed(0)}k`);
+
+            svg.append("g").attr("transform", `translate(0, ${height - margin.bottom})`).call(xAxis).attr("class", "text-zinc-500");
+            svg.append("g").attr("transform", `translate(${margin.left}, 0)`).call(yAxis).attr("class", "text-zinc-500");
+
+            elements.chart.appendChild(svg.node());
+        }
+
+        function generateInsights(engine, mcResults, swrPercentage) {
+            elements.insightsContainer.innerHTML = "";
+            
+            if (engine.fireMonth === null) {
+                elements.insightsContainer.innerHTML = `
+                    <div class="bg-red-50 dark:bg-red-950/20 p-4 rounded-lg border border-red-200 dark:border-red-800">
+                        <div class="font-bold text-red-700 dark:text-red-400 flex items-center gap-2 mb-2">
+                            <span class="material-icons text-sm">warning</span> Plan Not Viable
+                        </div>
+                        <p class="text-sm text-red-600 dark:text-red-300">Your current plan fails before age 90. Increase savings, delay FIRE, reduce target income, or improve returns.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const fireYear = Math.floor(engine.fireMonth / 12);
+            const fireAge = state.currentAge + fireYear;
+            const mortgageYear = engine.mortgageFreeMonth ? Math.floor(engine.mortgageFreeMonth / 12) : null;
+            const mortgageAge = mortgageYear ? state.currentAge + mortgageYear : null;
+
+            // Build insights cards
+            let html = `
+                <div class="bg-emerald-50 dark:bg-emerald-950/20 p-4 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                    <div class="font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-2 mb-2">
+                        <span class="material-icons text-sm">celebration</span> FIRE Target
+                    </div>
+                    <p class="text-sm text-emerald-600 dark:text-emerald-300 mb-1"><strong>Age ${fireAge}</strong> (in ${fireYear} years)</p>
+                    <p class="text-xs text-emerald-600/80 dark:text-emerald-400/80">Portfolio at FIRE: <strong>£${Math.round(engine.peakAssets / 1000).toLocaleString()}k</strong></p>
+                </div>
+            `;
+
+            if (mortgageAge !== null) {
+                html += `
+                    <div class="bg-red-50 dark:bg-red-950/20 p-4 rounded-lg border border-red-200 dark:border-red-800">
+                        <div class="font-bold text-red-700 dark:text-red-400 flex items-center gap-2 mb-2">
+                            <span class="material-icons text-sm">home</span> Mortgage Freedom
+                        </div>
+                        <p class="text-sm text-red-600 dark:text-red-300 mb-1"><strong>Age ${mortgageAge}</strong> (${mortgageYear} years from now)</p>
+                        <p class="text-xs text-red-600/80 dark:text-red-400/80">${mortgageYear < fireYear ? '✓ Cleared BEFORE FIRE' : mortgageYear === fireYear ? '✓ Clears at FIRE' : '⚠ Carries into decumulation'}</p>
+                    </div>
+                `;
+            } else if (state.mortgageRemaining > 0) {
+                html += `
+                    <div class="bg-orange-50 dark:bg-orange-950/20 p-4 rounded-lg border border-orange-200 dark:border-orange-800">
+                        <div class="font-bold text-orange-700 dark:text-orange-400 flex items-center gap-2 mb-2">
+                            <span class="material-icons text-sm">warning</span> Mortgage Concern
+                        </div>
+                        <p class="text-sm text-orange-600 dark:text-orange-300">Mortgage extends beyond age 90. Increase overpayments or reduce principal.</p>
+                    </div>
+                `;
+            }
+
+            // SWR Assessment
+            let swrHtml = '';
+            if (swrPercentage <= 3) {
+                swrHtml = `<div class="bg-emerald-50 dark:bg-emerald-950/20 p-4 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                    <div class="font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-2 mb-2">
+                        <span class="material-icons text-sm">shield_check</span> SWR Analysis: Very Conservative
+                    </div>
+                    <p class="text-sm text-emerald-600 dark:text-emerald-300 mb-1"><strong>${swrPercentage.toFixed(2)}%</strong> withdrawal rate</p>
+                    <p class="text-xs text-emerald-600/80 dark:text-emerald-400/80">Your plan has significant safety margin. Consider increasing spending or retiring earlier.</p>
+                </div>`;
+            } else if (swrPercentage <= 4) {
+                swrHtml = `<div class="bg-emerald-50 dark:bg-emerald-950/20 p-4 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                    <div class="font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-2 mb-2">
+                        <span class="material-icons text-sm">thumb_up</span> SWR Analysis: Safe & Optimal
+                    </div>
+                    <p class="text-sm text-emerald-600 dark:text-emerald-300 mb-1"><strong>${swrPercentage.toFixed(2)}%</strong> withdrawal rate</p>
+                    <p class="text-xs text-emerald-600/80 dark:text-emerald-400/80">Aligns with the classic 4% rule. Statistically sound across market cycles.</p>
+                </div>`;
+            } else if (swrPercentage <= 5) {
+                swrHtml = `<div class="bg-amber-50 dark:bg-amber-950/20 p-4 rounded-lg border border-amber-200 dark:border-amber-800">
+                    <div class="font-bold text-amber-700 dark:text-amber-400 flex items-center gap-2 mb-2">
+                        <span class="material-icons text-sm">info</span> SWR Analysis: Moderate Risk
+                    </div>
+                    <p class="text-sm text-amber-600 dark:text-amber-300 mb-1"><strong>${swrPercentage.toFixed(2)}%</strong> withdrawal rate</p>
+                    <p class="text-xs text-amber-600/80 dark:text-amber-400/80">Above 4% rule but defensible with a buffer. Run Monte Carlo to test sequence risk.</p>
+                </div>`;
+            } else {
+                swrHtml = `<div class="bg-red-50 dark:bg-red-950/20 p-4 rounded-lg border border-red-200 dark:border-red-800">
+                    <div class="font-bold text-red-700 dark:text-red-400 flex items-center gap-2 mb-2">
+                        <span class="material-icons text-sm">error</span> SWR Analysis: High Risk
+                    </div>
+                    <p class="text-sm text-red-600 dark:text-red-300 mb-1"><strong>${swrPercentage.toFixed(2)}%</strong> withdrawal rate</p>
+                    <p class="text-xs text-red-600/80 dark:text-red-400/80">Exceeds safe historical benchmarks. Significant portfolio depletion risk.</p>
+                </div>`;
+            }
+            html += swrHtml;
+
+            // Pension Access Note
+            html += `
+                <div class="bg-blue-50 dark:bg-blue-950/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
+                    <div class="font-bold text-blue-700 dark:text-blue-400 flex items-center gap-2 mb-2">
+                        <span class="material-icons text-sm">account_balance</span> Pension Access
+                    </div>
+                    <p class="text-sm text-blue-600 dark:text-blue-300">UK pensions unlock at <strong>age 57</strong>. Your current plan shifts to pension drawdown at age 57. Use tax-efficient withdrawals (personal allowance, dividend allowance).</p>
+                </div>
+            `;
+
+            // Monte Carlo note if enabled
+            if (state.monteCarlo && mcResults.stats) {
+                html += `
+                    <div class="bg-purple-50 dark:bg-purple-950/20 p-4 rounded-lg border border-purple-200 dark:border-purple-800">
+                        <div class="font-bold text-purple-700 dark:text-purple-400 flex items-center gap-2 mb-2">
+                            <span class="material-icons text-sm">query_stats</span> Stress Test Results
+                        </div>
+                        <p class="text-sm text-purple-600 dark:text-purple-300 mb-1">Success Rate: <strong>${mcResults.rate.toFixed(1)}%</strong> across 200 simulations</p>
+                        <p class="text-xs text-purple-600/80 dark:text-purple-400/80">${mcResults.rate >= 90 ? '✓ Robust plan with high confidence' : mcResults.rate >= 75 ? '⚠ Moderate resilience; monitor drawdowns' : '❌ Plan vulnerable to market downturns at retirement'}</p>
+                    </div>
+                `;
+            }
+
+            // State Pension benefit
+            if (state.statePensionAmount > 0) {
+                const statePensionYears = 90 - state.statePensionAge;
+                const statePensionBenefit = state.statePensionAmount * statePensionYears;
+                html += `
+                    <div class="bg-teal-50 dark:bg-teal-950/20 p-4 rounded-lg border border-teal-200 dark:border-teal-800">
+                        <div class="font-bold text-teal-700 dark:text-teal-400 flex items-center gap-2 mb-2">
+                            <span class="material-icons text-sm">savings_account</span> State Pension Strategy
+                        </div>
+                        <p class="text-sm text-teal-600 dark:text-teal-300 mb-1">Kicks in at <strong>Age ${state.statePensionAge}</strong> (£${Math.round(state.statePensionAmount).toLocaleString()}/year)</p>
+                        <p class="text-xs text-teal-600/80 dark:text-teal-400/80">Estimated total (Age ${state.statePensionAge}-90): <strong>£${Math.round(statePensionBenefit).toLocaleString()}</strong></p>
+                    </div>
+                `;
+            }
+
+            elements.insightsContainer.innerHTML = html;
+        }
+
+        function updateLegend() {
+            let html = `
+                <span class="flex items-center gap-1"><span class="w-3 h-3 bg-blue-500 rounded-full"></span> ISA (Bridge)</span>
+                <span class="flex items-center gap-1"><span class="w-3 h-3 bg-emerald-500 rounded-full"></span> SIPP Pension</span>
+                <span class="flex items-center gap-1"><span class="w-3 h-3 bg-red-500 rounded-full"></span> Real Mortgage Debt</span>
+            `;
+            
+            if (state.statePensionAmount > 0) {
+                html += `<span class="flex items-center gap-1 ml-2"><span class="w-3 h-3 bg-teal-500 rounded-full"></span> State Pension (Age ${state.statePensionAge})</span>`;
+            }
+
+            if (state.monteCarlo) {
+                html += `
+                    <span class="ml-4 font-bold text-zinc-500">MC Paths:</span>
+                    <span class="flex items-center gap-1"><span class="w-4 h-0.5 border-t-2 border-dashed border-green-500"></span> 90th% (Best)</span>
+                    <span class="flex items-center gap-1"><span class="w-4 h-0.5 border-t-2 border-dashed border-yellow-500"></span> Median</span>
+                    <span class="flex items-center gap-1"><span class="w-4 h-0.5 border-t-2 border-dashed border-red-500"></span> 10th% (Worst)</span>
+                `;
+            }
+            elements.legendContainer.innerHTML = html;
+        }
+
+        function updateUI() {
+            state.currentAge = parseInt(elements.sliderAge.value);
+            state.monthlyIsa = parseInt(elements.sliderIsa.value);
+            state.mortgageOverpay = parseInt(elements.sliderOverpay.value);
+            state.mortgageRate = parseFloat(elements.sliderRate.value);
+            state.grossReturn = parseFloat(elements.sliderGross.value);
+            state.inflation = parseFloat(elements.sliderInflation.value);
+            state.targetIncome = parseInt(elements.sliderTarget.value);
+            state.taxDrag = parseInt(elements.sliderTax.value);
+            state.overFundBuffer = parseInt(elements.sliderBuffer.value);
+            state.monteCarlo = elements.toggleMC.checked;
+
+            state.startingIsa = parseFloat(elements.inputStartingIsa.value) || 0;
+            state.startingPension = parseFloat(elements.inputStartingPension.value) || 0;
+            state.mortgageRemaining = parseFloat(elements.inputMortgage.value) || 0;
+            state.mortgageBase = parseFloat(elements.inputMortgageBase.value) || 0;
+            state.netIncome = parseFloat(elements.inputNetIncome.value) || 0;
+            state.livingExpenses = parseFloat(elements.inputLivingExpenses.value) || 0;
+            state.workplacePension = parseFloat(elements.inputWorkplacePension.value) || 0;
+            state.monthlySipp = parseFloat(elements.inputSippAddition.value) || 0;
+            state.statePensionAge = parseInt(elements.inputStatePensionAge.value) || 68;
+            state.statePensionAmount = parseFloat(elements.inputStatePensionAmount.value) || 0;
+            state.lumpSumEnabled = elements.toggleLumpSum.checked;
+            state.lumpSumAmount = parseFloat(elements.inputLumpSum.value) || 0;
+            state.sippTaxOnly = elements.toggleSippTax.checked;
+
+            elements.valAge.textContent = `${state.currentAge}`;
+            elements.valIsa.textContent = `£${state.monthlyIsa.toLocaleString()}`;
+            elements.valOverpay.textContent = `£${state.mortgageOverpay.toLocaleString()}`;
+            elements.valRate.textContent = `${state.mortgageRate.toFixed(1)}%`;
+            elements.valGross.textContent = `${state.grossReturn.toFixed(1)}%`;
+            elements.valInflation.textContent = `${state.inflation.toFixed(1)}%`;
+            elements.valTarget.textContent = `£${state.targetIncome.toLocaleString()}`;
+            elements.valTax.textContent = `+${state.taxDrag}%`;
+            elements.valBuffer.textContent = `+${state.overFundBuffer}%`;
+
+            const currentMortgageCost = state.mortgageRemaining > 0 ? (state.mortgageBase + state.mortgageOverpay) : 0;
+            const totalOutlay = state.livingExpenses + currentMortgageCost + state.monthlyIsa + state.monthlySipp;
+            const surplus = state.netIncome - totalOutlay;
+
+            if (surplus >= 0) {
+                elements.surplusCash.textContent = `£${surplus.toLocaleString()} / mo`;
+                elements.surplusCard.className = "flex items-center gap-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 px-4 py-2 rounded-xl text-emerald-800 dark:text-emerald-400 shrink-0";
+            } else {
+                elements.surplusCash.textContent = `Deficit: £${Math.abs(surplus).toLocaleString()}`;
+                elements.surplusCard.className = "flex items-center gap-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 px-4 py-2 rounded-xl text-red-800 dark:text-red-400 shrink-0";
+            }
+
+            const engine = calculateDeterministic();
+            let mcResults = { stats: null, rate: 100 };
+
+            if (state.monteCarlo && engine.fireMonth !== null) {
+                mcResults = runMonteCarlo(engine.fireMonth, engine.baseTargetReal, engine.monthlyRealReturn, engine.annualInflation, engine.monthlyMortgageRate);
+            }
+
+            elements.hudTargetPot.textContent = `${(engine.realReturn * 100).toFixed(1)}%`;
+
+            // Calculate SWR at FIRE date
+            let swrPercentage = 0;
+            if (engine.fireMonth !== null && engine.peakAssets > 0) {
+                swrPercentage = ((engine.baseTargetReal / 12) / engine.peakAssets) * 100;
+            }
+            elements.hudSwr.textContent = `${swrPercentage.toFixed(2)}%`;
+            if (swrPercentage <= 4) {
+                elements.hudSwr.className = "text-2xl font-extrabold text-zinc-900 dark:text-white mt-1 text-emerald-600";
+                elements.hudSwrDetails.textContent = "Conservative & Safe";
+            } else if (swrPercentage <= 5) {
+                elements.hudSwr.className = "text-2xl font-extrabold text-zinc-900 dark:text-white mt-1 text-amber-500";
+                elements.hudSwrDetails.textContent = "Moderate Risk";
+            } else {
+                elements.hudSwr.className = "text-2xl font-extrabold text-zinc-900 dark:text-white mt-1 text-red-500";
+                elements.hudSwrDetails.textContent = "High Risk / Unsustainable";
+            }
+
+            if (engine.fireMonth !== null) {
+                const fireYear = Math.floor(engine.fireMonth / 12);
+                const fireAge = state.currentAge + fireYear;
+                elements.hudFireAge.textContent = `Age ${fireAge}`;
+                elements.hudFireTimeline.textContent = `${fireYear} years to trigger`;
+                elements.hudTotalAssets.textContent = `£${Math.round(engine.peakAssets / 1000).toLocaleString()}k`;
+            } else {
+                elements.hudFireAge.textContent = "> Age 90";
+                elements.hudFireTimeline.textContent = "Pot fails prematurely";
+                elements.hudTotalAssets.textContent = "N/A";
+            }
+
+            if (engine.mortgageFreeMonth !== null) {
+                const mFreeYear = Math.floor(engine.mortgageFreeMonth / 12);
+                elements.hudMortgageFree.textContent = `${mFreeYear} Years`;
+                elements.hudMortgageAge.textContent = `Cleared at Age ${state.currentAge + mFreeYear}`;
+            } else {
+                elements.hudMortgageFree.textContent = state.mortgageRemaining > 0 ? "> Lifetime" : "No Debt";
+                elements.hudMortgageAge.textContent = state.mortgageRemaining > 0 ? "Debt carried" : "Starting clean";
+            }
+
+            if (state.monteCarlo) {
+                elements.hudMcStatus.textContent = `${mcResults.rate.toFixed(1)}%`;
+                if (mcResults.rate >= 90) elements.hudMcStatus.className = "text-2xl font-extrabold mt-1 text-emerald-600";
+                else if (mcResults.rate >= 75) elements.hudMcStatus.className = "text-2xl font-extrabold mt-1 text-amber-500";
+                else elements.hudMcStatus.className = "text-2xl font-extrabold mt-1 text-red-500";
+                elements.hudMcDetails.textContent = "Seeded MC Sim Active";
+            } else {
+                elements.hudMcStatus.textContent = "N/A";
+                elements.hudMcStatus.className = "text-2xl font-extrabold mt-1 text-zinc-400";
+                elements.hudMcDetails.textContent = "Enable toggle to test";
+            }
+
+            updateLegend();
+
+            const activeFireYear = engine.fireMonth !== null ? Math.floor(engine.fireMonth / 12) : null;
+            if (!elements.viewChart.classList.contains('hidden')) drawChart(engine.data, activeFireYear, mcResults.stats);
+            populateTable(engine.data, activeFireYear, engine.baseTargetReal);
+            generateInsights(engine, mcResults, swrPercentage);
+        }
+
+        ['sliderAge', 'sliderIsa', 'sliderOverpay', 'sliderRate', 'sliderGross', 'sliderInflation', 'sliderTarget', 'sliderTax', 'sliderBuffer'].forEach(id => {
+            elements[id].addEventListener('input', updateUI);
+        });
+        ['inputStartingIsa', 'inputStartingPension', 'inputMortgage', 'inputMortgageBase', 'inputNetIncome', 'inputLivingExpenses', 'inputWorkplacePension', 'inputSippAddition', 'inputStatePensionAge', 'inputStatePensionAmount', 'inputLumpSum'].forEach(id => {
+            elements[id].addEventListener('input', updateUI);
+        });
+        elements.toggleMC.addEventListener('change', updateUI);
+        elements.toggleLumpSum.addEventListener('change', updateUI);
+        elements.toggleSippTax.addEventListener('change', updateUI);
+
+        updateUI();
+        window.addEventListener('resize', updateUI);
+    </script>
+</body>
+</html>
