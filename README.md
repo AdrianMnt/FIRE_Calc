@@ -53,24 +53,10 @@ You can switch between:
 
 ## How to use it
 
-### Option 1: Open the HTML file directly
-1. Open the file in your browser.
+###  Open the HTML file directly
+1. Open the file in your browser. (or by clicking here: https://adrianmnt.github.io/FIRE_Calc/)
 2. Adjust the inputs on the left side.
 3. Watch the summary cards and charts update automatically.
-
-### Option 2: Run a local web server
-If you want a cleaner local experience, start a simple local server from the folder containing the file:
-
-On Windows, in PowerShell:
-```powershell
-cd path\to\your\folder
-py -m http.server 8000
-```
-
-Then open:
-```text
-http://localhost:8000/index.html
-```
 
 ---
 
@@ -257,10 +243,3 @@ This project is a personal planning tool and is intended for educational use. Fe
 ## Summary
 
 This simulator is best used as a decision-support tool for exploring how your financial plan might evolve over time. It helps you ask better questions about retirement timing, mortgage strategy, and the trade-off between spending, saving, and risk.
-
-If you want, you can also turn this into a more formal GitHub project by adding:
-- a screenshot,
-- a demo GIF,
-- a licence file,
-- a contribution guide,
-- a version history section.
