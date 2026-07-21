@@ -170,7 +170,7 @@
                                 <label class="text-[10px] uppercase font-bold text-zinc-500">Mortgage Balance</label>
                                 <div class="relative mt-1">
                                     <span class="absolute left-2.5 top-2 text-xs text-zinc-400">£</span>
-                                    <input type="number" id="input-mortgage" value="148000" class="w-full pl-6 pr-2 py-1.5 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                    <input type="number" id="input-mortgage" value="200000" class="w-full pl-6 pr-2 py-1.5 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500">
                                 </div>
                             </div>
                             <div>
@@ -539,33 +539,123 @@
             insightsContainer: document.getElementById('insights-container')
         };
 
+        const STORAGE_KEY = 'pro-fire-simulator-state-v1';
+
+        function setActiveView(viewName) {
+            if (viewName === 'table') {
+                elements.viewChart.classList.add('hidden');
+                elements.viewTable.classList.remove('hidden');
+                elements.viewInsights.classList.add('hidden');
+                elements.btnTabTable.className = "px-4 py-1.5 text-xs font-medium rounded-md bg-white dark:bg-zinc-700 shadow text-zinc-900 dark:text-white flex items-center gap-1 transition";
+                elements.btnTabChart.className = "px-4 py-1.5 text-xs font-medium rounded-md text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1 transition";
+                elements.btnTabInsights.className = "px-4 py-1.5 text-xs font-medium rounded-md text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1 transition";
+            } else if (viewName === 'insights') {
+                elements.viewChart.classList.add('hidden');
+                elements.viewTable.classList.add('hidden');
+                elements.viewInsights.classList.remove('hidden');
+                elements.btnTabInsights.className = "px-4 py-1.5 text-xs font-medium rounded-md bg-white dark:bg-zinc-700 shadow text-zinc-900 dark:text-white flex items-center gap-1 transition";
+                elements.btnTabChart.className = "px-4 py-1.5 text-xs font-medium rounded-md text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1 transition";
+                elements.btnTabTable.className = "px-4 py-1.5 text-xs font-medium rounded-md text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1 transition";
+            } else {
+                elements.viewChart.classList.remove('hidden');
+                elements.viewTable.classList.add('hidden');
+                elements.viewInsights.classList.add('hidden');
+                elements.btnTabChart.className = "px-4 py-1.5 text-xs font-medium rounded-md bg-white dark:bg-zinc-700 shadow text-zinc-900 dark:text-white flex items-center gap-1 transition";
+                elements.btnTabTable.className = "px-4 py-1.5 text-xs font-medium rounded-md text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1 transition";
+                elements.btnTabInsights.className = "px-4 py-1.5 text-xs font-medium rounded-md text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1 transition";
+            }
+        }
+
+        function saveState() {
+            const payload = {
+                currentAge: state.currentAge,
+                monthlyIsa: state.monthlyIsa,
+                mortgageOverpay: state.mortgageOverpay,
+                mortgageRate: state.mortgageRate,
+                grossReturn: state.grossReturn,
+                inflation: state.inflation,
+                targetIncome: state.targetIncome,
+                taxDrag: state.taxDrag,
+                overFundBuffer: state.overFundBuffer,
+                monteCarlo: state.monteCarlo,
+                startingIsa: state.startingIsa,
+                startingPension: state.startingPension,
+                mortgageRemaining: state.mortgageRemaining,
+                mortgageBase: state.mortgageBase,
+                netIncome: state.netIncome,
+                livingExpenses: state.livingExpenses,
+                workplacePension: state.workplacePension,
+                monthlySipp: state.monthlySipp,
+                statePensionAge: state.statePensionAge,
+                statePensionAmount: state.statePensionAmount,
+                lumpSumEnabled: state.lumpSumEnabled,
+                lumpSumAmount: state.lumpSumAmount,
+                sippTaxOnly: state.sippTaxOnly,
+                activeView: elements.viewChart.classList.contains('hidden')
+                    ? (elements.viewTable.classList.contains('hidden') ? 'insights' : 'table')
+                    : 'chart'
+            };
+
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+            } catch (error) {
+                console.warn('Could not save simulator state', error);
+            }
+        }
+
+        function restoreState() {
+            try {
+                const saved = localStorage.getItem(STORAGE_KEY);
+                if (!saved) return false;
+
+                const parsed = JSON.parse(saved);
+                if (!parsed) return false;
+
+                elements.sliderAge.value = parsed.currentAge ?? state.currentAge;
+                elements.sliderIsa.value = parsed.monthlyIsa ?? state.monthlyIsa;
+                elements.sliderOverpay.value = parsed.mortgageOverpay ?? state.mortgageOverpay;
+                elements.sliderRate.value = parsed.mortgageRate ?? state.mortgageRate;
+                elements.sliderGross.value = parsed.grossReturn ?? state.grossReturn;
+                elements.sliderInflation.value = parsed.inflation ?? state.inflation;
+                elements.sliderTarget.value = parsed.targetIncome ?? state.targetIncome;
+                elements.sliderTax.value = parsed.taxDrag ?? state.taxDrag;
+                elements.sliderBuffer.value = parsed.overFundBuffer ?? state.overFundBuffer;
+                elements.toggleMC.checked = Boolean(parsed.monteCarlo);
+
+                elements.inputStartingIsa.value = parsed.startingIsa ?? state.startingIsa;
+                elements.inputStartingPension.value = parsed.startingPension ?? state.startingPension;
+                elements.inputMortgage.value = parsed.mortgageRemaining ?? state.mortgageRemaining;
+                elements.inputMortgageBase.value = parsed.mortgageBase ?? state.mortgageBase;
+                elements.inputNetIncome.value = parsed.netIncome ?? state.netIncome;
+                elements.inputLivingExpenses.value = parsed.livingExpenses ?? state.livingExpenses;
+                elements.inputWorkplacePension.value = parsed.workplacePension ?? state.workplacePension;
+                elements.inputSippAddition.value = parsed.monthlySipp ?? state.monthlySipp;
+                elements.inputStatePensionAge.value = parsed.statePensionAge ?? state.statePensionAge;
+                elements.inputStatePensionAmount.value = parsed.statePensionAmount ?? state.statePensionAmount;
+                elements.inputLumpSum.value = parsed.lumpSumAmount ?? state.lumpSumAmount;
+                elements.toggleLumpSum.checked = Boolean(parsed.lumpSumEnabled);
+                elements.toggleSippTax.checked = Boolean(parsed.sippTaxOnly);
+
+                setActiveView(parsed.activeView || 'chart');
+                return true;
+            } catch (error) {
+                console.warn('Could not load simulator state', error);
+                return false;
+            }
+        }
+
         elements.btnTabChart.addEventListener('click', () => {
-            elements.viewChart.classList.remove('hidden');
-            elements.viewTable.classList.add('hidden');
-            elements.viewInsights.classList.add('hidden');
-            elements.btnTabChart.className = "px-4 py-1.5 text-xs font-medium rounded-md bg-white dark:bg-zinc-700 shadow text-zinc-900 dark:text-white flex items-center gap-1 transition";
-            elements.btnTabTable.className = "px-4 py-1.5 text-xs font-medium rounded-md text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1 transition";
-            elements.btnTabInsights.className = "px-4 py-1.5 text-xs font-medium rounded-md text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1 transition";
+            setActiveView('chart');
             updateUI();
         });
 
         elements.btnTabTable.addEventListener('click', () => {
-            elements.viewChart.classList.add('hidden');
-            elements.viewTable.classList.remove('hidden');
-            elements.viewInsights.classList.add('hidden');
-            elements.btnTabTable.className = "px-4 py-1.5 text-xs font-medium rounded-md bg-white dark:bg-zinc-700 shadow text-zinc-900 dark:text-white flex items-center gap-1 transition";
-            elements.btnTabChart.className = "px-4 py-1.5 text-xs font-medium rounded-md text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1 transition";
-            elements.btnTabInsights.className = "px-4 py-1.5 text-xs font-medium rounded-md text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1 transition";
+            setActiveView('table');
             updateUI();
         });
 
         elements.btnTabInsights.addEventListener('click', () => {
-            elements.viewChart.classList.add('hidden');
-            elements.viewTable.classList.add('hidden');
-            elements.viewInsights.classList.remove('hidden');
-            elements.btnTabInsights.className = "px-4 py-1.5 text-xs font-medium rounded-md bg-white dark:bg-zinc-700 shadow text-zinc-900 dark:text-white flex items-center gap-1 transition";
-            elements.btnTabChart.className = "px-4 py-1.5 text-xs font-medium rounded-md text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1 transition";
-            elements.btnTabTable.className = "px-4 py-1.5 text-xs font-medium rounded-md text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1 transition";
+            setActiveView('insights');
             updateUI();
         });
 
@@ -1260,6 +1350,7 @@
             if (!elements.viewChart.classList.contains('hidden')) drawChart(engine.data, activeFireYear, mcResults.stats);
             populateTable(engine.data, engine.fireMonth, engine.baseTargetReal);
             generateInsights(engine, mcResults, swrPercentage);
+            saveState();
         }
 
         ['sliderAge', 'sliderIsa', 'sliderOverpay', 'sliderRate', 'sliderGross', 'sliderInflation', 'sliderTarget', 'sliderTax', 'sliderBuffer'].forEach(id => {
@@ -1272,6 +1363,7 @@
         elements.toggleLumpSum.addEventListener('change', updateUI);
         elements.toggleSippTax.addEventListener('change', updateUI);
 
+        restoreState();
         updateUI();
         window.addEventListener('resize', updateUI);
     </script>
