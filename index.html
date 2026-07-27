@@ -193,8 +193,8 @@
                                 <label for="slider-overpay" class="text-xs font-medium text-zinc-700 dark:text-zinc-300">Mthly Overpay (Stops at FIRE)</label>
                                 <span class="text-xs font-bold text-red-500" id="val-overpay">£1,000</span>
                             </div>
-                            <div class="text-[10px] text-zinc-500 dark:text-zinc-400 italic mb-1 text-right">(Redirects automatically to ISA once cleared)</div>
                             <input type="range" id="slider-overpay" min="0" max="3000" step="50" value="1000" class="w-full h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-red-500">
+                            <div class="text-[10px] text-zinc-500 dark:text-zinc-400 italic mb-1 text-right">(Both Base + Overpay are automatically redirected to ISA once mortgage is cleared)</div>
                         </div>
                     </div>
                 </div>
@@ -782,7 +782,11 @@
                     if (!isRetired) {
                         let activeIsaAddReal = state.monthlyIsa;
                         if (curMort === 0) {
-                            activeIsaAddReal += (state.mortgageOverpay / Math.pow(1 + annualInflation, year));
+                            // NOTE: Mortgage is cleared. Previously only the overpayment (state.mortgageOverpay)
+                            // was redirected here, leaving the standard/base payment (state.mortgageBase)
+                            // unaccounted for as "surplus". Now the FULL former mortgage payment
+                            // (base + overpay) is redirected into the ISA.
+                            activeIsaAddReal += ((state.mortgageBase + state.mortgageOverpay) / Math.pow(1 + annualInflation, year));
                         }
                         
                         curIsa += activeIsaAddReal;
@@ -899,7 +903,9 @@
 
                     if (!isRetired) {
                         let activeIsaAddReal = state.monthlyIsa;
-                        if (curMort === 0) activeIsaAddReal += (state.mortgageOverpay / Math.pow(1 + annualInflation, year));
+                        // NOTE: same fix as calculateDeterministic() - redirect the FULL former
+                        // mortgage payment (base + overpay), not just the overpay portion.
+                        if (curMort === 0) activeIsaAddReal += ((state.mortgageBase + state.mortgageOverpay) / Math.pow(1 + annualInflation, year));
                         curIsa += activeIsaAddReal;
                         curPen += (state.workplacePension + state.monthlySipp);
                     } else {
