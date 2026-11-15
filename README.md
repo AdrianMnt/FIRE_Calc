@@ -16,6 +16,8 @@ Select any headline figure for its calculation and the assumptions behind it. Th
 
 Coast and Barista each have an optional mortgage-free requirement. When selected, the model keeps the full-time budget and any mortgage overpayments until payoff, then searches for an eligible start. Both options default to off.
 
+Enable **Show target ages** and choose a percentage to find the first month each plan reaches that target. Every start uses the same 500 seeded market paths, the stated spending and the matching mortgage-free switch. A missing age means no eligible start reached the threshold. The main chart shows the deterministic baseline. The target is a result under the entered assumptions and changes with market return, spending and the horizon.
+
 ## Model conventions
 
 - Each month starts at the displayed age. Cash flows come first and growth follows. Decimal ages round to the nearest month. Contributions and living expenses are in today's pounds. Mortgage payments and interest run on a nominal schedule. A specified mortgage term makes any outstanding balance payable in the final month of that term.

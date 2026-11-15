@@ -1,6 +1,6 @@
 'use strict';
 
-const { defaults, project, simulate, stressTest } = FireModel;
+const { defaults, project, simulate, stressTest, findSuccessAges } = FireModel;
 const get = id => document.getElementById(id);
 const storageKey = 'pro-fire-simulator-state-v2';
 const pounds = new Intl.NumberFormat('en-GB', {
@@ -127,6 +127,10 @@ for (const [title, specs] of groups) {
 }
 
 const mode = get('mode');
+const riskEnabled = get('risk-enabled');
+const riskTarget = get('risk-target');
+riskEnabled.checked = saved.riskEnabled === true;
+riskTarget.value = saved.riskTarget ?? 90;
 if (['full', 'coast', 'partTime'].includes(saved.mode)) mode.value = saved.mode;
 const scenarioNames = { full: 'Full FIRE', coast: 'Coast FIRE', partTime: 'Barista FIRE' };
 const balanceSeries = [
@@ -302,6 +306,81 @@ function renderSummary(cards, result, inputs, mortgageFree) {
     show(openExplanation);
 }
 
+let currentRiskSearch;
+let previousRisk;
+let latestInputs;
+let latestPrepared;
+
+function updateRisk(p, inputs) {
+    const settings = get('risk-settings');
+    settings.hidden = !riskEnabled.checked;
+    const status = get('risk-status');
+    const output = get('risk-results');
+
+    if (!riskEnabled.checked || !riskTarget.validity.valid || !p) {
+        currentRiskSearch = null;
+        output.replaceChildren();
+        status.textContent = riskEnabled.checked && p ? 'Enter a target from 0.1% to 100%.' : '';
+        return;
+    }
+    const target = riskTarget.valueAsNumber;
+    const { monteCarlo, ...assumptions } = inputs;
+    const key = JSON.stringify([assumptions, target]);
+    if (currentRiskSearch?.key === key) return;
+    function show(plans) {
+        output.replaceChildren(...Object.entries(plans).map(([name, plan]) => {
+            const card = element('div');
+            card.dataset.kind = name;
+            const value = plan ? 'Age ' + age((p.age + plan.start) / 12)
+                : name === 'partTime' && !p.partTimeNet ? 'Off' : 'No qualifying age';
+            card.append(element('dt', scenarioNames[name]), element('dd', value));
+            if (plan) card.append(element('small', (100 * plan.successes / plan.count).toFixed(1)
+                + '% · ' + plan.successes + ' of ' + plan.count + ' paths'));
+            return card;
+        }));
+        status.textContent = '';
+    }
+    if (previousRisk?.key === key) {
+        currentRiskSearch = null;
+        show(previousRisk.plans);
+        return;
+    }
+    output.replaceChildren();
+    status.textContent = 'Checking start dates…';
+    const search = { key, steps: findSuccessAges(p, target) };
+    currentRiskSearch = search;
+    function runSlice() {
+        if (currentRiskSearch !== search) return;
+        const deadline = performance.now() + 20;
+        let step;
+        do {
+            step = search.steps.next();
+            if (step.done) {
+                currentRiskSearch = null;
+                previousRisk = { key, plans: step.value };
+                show(step.value);
+                return;
+            }
+        } while (performance.now() < deadline);
+        const decade = Math.floor(step.value / 120);
+        if (decade !== search.decade) {
+            search.decade = decade;
+            status.textContent = 'Checking starts around age ' + age((p.age + step.value) / 12) + '…';
+        }
+        setTimeout(runSlice, 0);
+    }
+    setTimeout(runSlice, 0);
+}
+
+function saveInputs(inputs) {
+    try {
+        localStorage.setItem(storageKey, JSON.stringify({ ...inputs, mode: mode.value,
+            riskEnabled: riskEnabled.checked, riskTarget: riskTarget.validity.valid ? riskTarget.valueAsNumber : 90 }));
+    } catch {
+        // The calculator can still run when storage is unavailable.
+    }
+}
+
 function update() {
     try {
         const inputs = {};
@@ -350,12 +429,13 @@ function update() {
             stress, mortgageFree: opening.mortgage > 0.005 ? mortgageFree : null,
             start: selected?.start
         });
-        try {
-            localStorage.setItem(storageKey, JSON.stringify({ ...inputs, mode: mode.value }));
-        } catch {
-            // The calculator can still run when storage is unavailable.
-        }
+        latestInputs = inputs;
+        latestPrepared = p;
+        updateRisk(p, inputs);
+        saveInputs(inputs);
     } catch (error) {
+        latestPrepared = null;
+        currentRiskSearch = null;
         get('report').hidden = true;
         get('error').textContent = error.message;
         get('error').hidden = false;
@@ -369,4 +449,10 @@ get('inputs').addEventListener('input', () => {
     timer = setTimeout(update, 180);
 });
 mode.addEventListener('change', update);
+for (const control of [riskEnabled, riskTarget]) {
+    control.addEventListener('change', () => {
+        updateRisk(latestPrepared, latestInputs);
+        if (latestInputs) saveInputs(latestInputs);
+    });
+}
 update();

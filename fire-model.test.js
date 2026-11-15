@@ -3,7 +3,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { incomeTax } = require('./uk-tax.js');
-const { prepare, project, simulate, stressTest } = require('./fire-model.js');
+const { prepare, project, simulate, stressTest, findSuccessAges } = require('./fire-model.js');
 
 const neutral = {
     currentAge: 50, horizonAge: 60, startingIsa: 0, startingCash: 0, startingPension: 0,
@@ -237,4 +237,57 @@ test('optional mortgage-free gates delay only their own scenario until actual pa
         partTimeAfterMortgage: true }).plans;
     assert.equal(debtFree.coast.start, 0);
     assert.equal(debtFree.partTime.start, 0);
+});
+
+function targetAges(p, target, options) {
+    const search = findSuccessAges(p, target, options);
+    let step = search.next();
+    while (!step.done) step = search.next();
+    return step.value;
+}
+
+test('target ages match a brute-force search and reported stress scores', () => {
+    const p = prepare({ ...neutral, currentAge: 55, horizonAge: 58, coastAge: 57,
+        partTimeEndAge: 57, partTimeNet: 500, partTimeGross: 700, startingIsa: 12000,
+        startingPension: 25000, startingCash: 500, monthlyIsa: 300, netIncome: 2500,
+        mortgageRemaining: 1800, mortgageBase: 150, mortgageOverpay: 150,
+        coastAfterMortgage: true, partTimeAfterMortgage: true, targetIncome: 12000, volatility: 25 });
+    const options = { count: 28, seed: 61 };
+    const target = 90;
+    const results = targetAges(p, target, options);
+    for (const mode of ['full', 'coast', 'partTime']) {
+        const limit = mode === 'full' ? p.duration : 24;
+        const eligible = Array.from({ length: limit }, (_, start) => start)
+            .filter(start => mode === 'full' || start >= 6);
+        const first = eligible.find(start =>
+            stressTest(p, { mode, start }, options).successes >= Math.ceil(options.count * target / 100));
+        assert.equal(results[mode]?.start, first);
+        if (first !== undefined) {
+            assert.equal(results[mode].successes, stressTest(p, { mode, start: first }, options).successes);
+        }
+    }
+    assert.ok(results.full);
+});
+
+test('target search reports missing dates and validates the requested percentage', () => {
+    const p = prepare({ ...neutral, currentAge: 50, horizonAge: 51, coastAge: 50.5,
+        targetIncome: 12000, volatility: 0 });
+    assert.deepEqual(targetAges(p, 100, { count: 10 }), { full: null, coast: null, partTime: null });
+    assert.throws(() => targetAges(p, 0), RangeError);
+    assert.throws(() => targetAges(p, 101), RangeError);
+});
+
+test('mortgage-free switches exclude otherwise successful Coast and Barista starts', () => {
+    const inputs = { ...neutral, currentAge: 50, horizonAge: 55, coastAge: 53, partTimeEndAge: 53,
+        startingIsa: 120000, targetIncome: 12000, netIncome: 2300, livingExpenses: 1000,
+        mortgageRemaining: 2400, mortgageBase: 100, mortgageOverpay: 100,
+        partTimeNet: 1000, partTimeGross: 1100, volatility: 0 };
+    const options = { count: 10 };
+    const open = targetAges(prepare(inputs), 90, options);
+    const gated = targetAges(prepare({ ...inputs, coastAfterMortgage: true, partTimeAfterMortgage: true }), 90, options);
+    assert.equal(open.coast.start, 0);
+    assert.equal(open.partTime.start, 0);
+    assert.equal(gated.coast.start, 12);
+    assert.equal(gated.partTime.start, 12);
+    assert.equal(gated.full.start, open.full.start);
 });

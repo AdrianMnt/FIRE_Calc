@@ -93,12 +93,28 @@ const FireModel = ((tax) => {
         const free = gross => Math.min(Math.max(0, gross - s.drawdown) / 4, s.allowance / price);
         const due = gross => tax.incrementalMonthlyTax(otherTaxable, gross - free(gross), p.region);
         let high = Math.min(available, need / 0.30);
-        if (high - due(high) >= need) {
-            let low = Math.min(need, high);
-            for (let step = 0; step < 42; step++) {
-                const middle = (low + high) / 2;
-                if (middle - due(middle) >= need) high = middle;
-                else low = middle;
+        let highNet = high - due(high);
+        if (highNet > need) {
+            let low = need;
+            let lowNet = low - due(low);
+            if (lowNet >= need) high = low;
+            else for (let step = 0; step < 48 && high - low > 1e-8; step++) {
+                // Net proceeds are piecewise linear. Interpolation usually solves within
+                // one tax band, while periodic bisection keeps convergence across band edges.
+                const fraction = (need - lowNet) / (highNet - lowNet);
+                const probe = low + (high - low) * (step % 4 === 3 ? 0.5 : fraction);
+                const net = probe - due(probe);
+                if (Math.abs(net - need) <= 1e-8) {
+                    high = probe;
+                    break;
+                }
+                if (net >= need) {
+                    high = probe;
+                    highNet = net;
+                } else {
+                    low = probe;
+                    lowNet = net;
+                }
             }
         }
         const incomeTax = due(high);
@@ -193,17 +209,26 @@ const FireModel = ((tax) => {
         return { rows, success, failureMonth: success ? null : p.duration, mortgageOutstanding: !success };
     }
 
+    const modes = ['full', 'coast', 'partTime'];
+
+    function eligibleUntil(p, mode) {
+        if (mode === 'coast') return p.coastEnd < p.duration ? p.coastEnd : 0;
+        if (mode === 'partTime') return p.partTimeNet > 0 ? Math.min(p.duration, p.partTimeEnd) : 0;
+        return p.duration;
+    }
+
+    function canStart(p, mode, month, mortgage) {
+        const mortgageRequired = mode === 'coast' ? p.coastAfterMortgage
+            : mode === 'partTime' && p.partTimeAfterMortgage;
+        return month < eligibleUntil(p, mode) && (!mortgageRequired || mortgage / p.prices[month] <= penny);
+    }
+
     function findPlans(p) {
         const plans = { full: null, coast: null, partTime: null };
-        const eligibleUntil = { full: p.duration, coast: p.coastEnd,
-            partTime: p.partTimeNet > 0 ? p.partTimeEnd : 0 };
-        const mortgageRequired = { coast: p.coastAfterMortgage, partTime: p.partTimeAfterMortgage };
         const s = initial(p);
         for (let m = 0; m < p.duration; m++) {
-            for (const mode of Object.keys(plans)) {
-                if (plans[mode] || m >= eligibleUntil[mode]
-                    || (mortgageRequired[mode] && s.mortgage / p.prices[m] > penny)
-                    || (mode === 'coast' && p.coastEnd >= p.duration)) continue;
+            for (const mode of modes) {
+                if (plans[mode] || !canStart(p, mode, m, s.mortgage)) continue;
                 const plan = { mode, start: m };
                 if (simulate(p, plan, { start: m, state: s, buffered: true }).success) plans[mode] = plan;
             }
@@ -231,22 +256,58 @@ const FireModel = ((tax) => {
         return { p, plans, selected, baseline, work, milestones: milestones(baseline.rows) };
     }
 
-    function stressTest(p, plan, { count = 500, seed = 123456789 } = {}) {
-        let successes = 0;
+    function marketPaths(p, count, seed) {
         let state = seed >>> 0;
-        const quantiles = Array.from({ length: p.duration + 1 }, () => []);
         const sigma = p.volatility / 100 / Math.sqrt(12);
         function uniform() {
             state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
             return (state + 0.5) / 4294967296;
         }
-        function growthAt() {
+        return Array.from({ length: count }, () => Float64Array.from(p.prices, () => {
             if (!sigma) return p.monthlyGrowth;
-            const standardNormal = Math.sqrt(-2 * Math.log(uniform())) * Math.cos(2 * Math.PI * uniform());
-            return p.monthlyGrowth * Math.exp(sigma * standardNormal - sigma ** 2 / 2);
+            const normal = Math.sqrt(-2 * Math.log(uniform())) * Math.cos(2 * Math.PI * uniform());
+            return p.monthlyGrowth * Math.exp(sigma * normal - sigma ** 2 / 2);
+        }));
+    }
+
+    // Every candidate sees the same calendar-month returns, including paths that previously failed.
+    // Search chronologically because a later date can still have a lower success rate.
+    function* findSuccessAges(p, target, { count = 500, seed = 123456789 } = {}) {
+        if (!Number.isFinite(target) || target <= 0 || target > 100) throw new RangeError('Use a success target above 0% and up to 100%.');
+        const required = Math.ceil(count * target / 100);
+        const paths = marketPaths(p, count, seed);
+        const workStates = paths.map(() => initial(p));
+        const plans = { full: null, coast: null, partTime: null };
+        for (let month = 0; month < p.duration; month++) {
+            const pending = modes.filter(mode => !plans[mode] && month < eligibleUntil(p, mode));
+            if (!pending.length) break;
+            for (const mode of pending) {
+                if (!canStart(p, mode, month, workStates[0].mortgage)) continue;
+                const plan = { mode, start: month };
+                let successes = 0;
+                let tested = 0;
+                for (; tested < count; tested++) {
+                    if (simulate(p, plan, { start: month, state: workStates[tested],
+                        growthAt: t => paths[tested][t] }).success) successes++;
+                    if (successes + count - tested - 1 < required) break;
+                    if (tested % 16 === 15) yield month;
+                }
+                if (tested === count && successes >= required) plans[mode] = { ...plan, successes, count };
+            }
+            yield month;
+            // The working budget and mortgage do not depend on market returns.
+            if (advance(workStates[0], p, month, 'Working', paths[0][month], false).shortfall > penny) break;
+            for (let i = 1; i < count; i++) advance(workStates[i], p, month, 'Working', paths[i][month], false);
         }
+        return plans;
+    }
+
+    function stressTest(p, plan, { count = 500, seed = 123456789 } = {}) {
+        let successes = 0;
+        const quantiles = Array.from({ length: p.duration + 1 }, () => []);
+        const paths = marketPaths(p, count, seed);
         for (let i = 0; i < count; i++) {
-            const path = simulate(p, plan, { record: true, growthAt });
+            const path = simulate(p, plan, { record: true, growthAt: month => paths[i][month] });
             if (path.success) successes++;
             for (const row of path.rows) {
                 if (row.shortfall > penny || (path.mortgageOutstanding && row.month === p.duration)) break;
@@ -261,7 +322,7 @@ const FireModel = ((tax) => {
         return { successes, count, ranges };
     }
 
-    return Object.freeze({ defaults, prepare, project, simulate, stressTest });
+    return Object.freeze({ defaults, prepare, project, simulate, stressTest, findSuccessAges });
 })(typeof module === 'undefined' ? UKTax : require('./uk-tax.js'));
 
 if (typeof module !== 'undefined') module.exports = FireModel;

@@ -164,21 +164,29 @@ class ProjectionChart {
             }
         }
 
-        if (start !== undefined && start > 0 && this.view !== 'mortgage') {
-            ctx.strokeStyle = color('--line');
+        if (start !== undefined && this.view !== 'mortgage') {
+            ctx.fillStyle = color('--phase-tint');
+            ctx.fillRect(x(start), top, right - x(start), bottom - top);
+            ctx.strokeStyle = color('--phase-line');
             ctx.setLineDash([3, 4]);
             segment(x(start), top, x(start), bottom);
             ctx.setLineDash([]);
+            const phaseLabel = 'Plan starts';
+            ctx.fillStyle = color('--phase-line');
+            ctx.textAlign = 'left';
+            ctx.fillText(phaseLabel, Math.min(x(start) + 6, right - ctx.measureText(phaseLabel).width), top + 16);
         }
 
         for (const [key, , variable] of lines) {
             ctx.strokeStyle = color(variable);
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 2.2;
+            ctx.setLineDash(key === 'mortgage' ? [5, 3] : []);
             ctx.beginPath();
             const visible = key === 'mortgage' && mortgageFree
                 ? rows.slice(0, mortgageFree.month + 1) : rows;
             for (const row of visible) ctx.lineTo(x(row.month), y(row[key]));
             ctx.stroke();
+            ctx.setLineDash([]);
             if (visible.length === 1) this.dot(ctx, x(0), y(visible[0][key]), color(variable));
         }
 
