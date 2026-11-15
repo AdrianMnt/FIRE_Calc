@@ -64,3 +64,94 @@ th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: l
 #error { border: 1px solid var(--mortgage); padding: .8rem; border-radius: .4rem; margin-bottom: .8rem; }
 a { color: var(--accent); }
 @media (max-width: 775px) { main { grid-template-columns: minmax(0, 1fr); } }
+
+:root {
+    --blue: #215d9b;
+    --green: #15735e;
+    --purple: #755099;
+    --rose: #a04459;
+    --gold: #875718;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --blue: #94c7ff;
+        --green: #82ddbb;
+        --purple: #d7b1ff;
+        --rose: #ffb1bd;
+        --gold: #f5c581;
+    }
+}
+.page-header h1 { color: var(--accent); }
+.panel h2 { color: var(--accent); }
+form details, .cards > div, .milestone-group {
+    --category: var(--accent);
+    border-top: 3px solid var(--category);
+    background: linear-gradient(155deg, color-mix(in srgb, var(--category) 8%, var(--panel)), var(--panel) 9rem);
+}
+form details:nth-child(2), .cards [data-kind=mortgage] { --category: var(--rose); }
+form details:nth-child(3), .cards [data-kind=full], .cards [data-kind=accessible], [data-metric=accessible] { --category: var(--blue); }
+form details:nth-child(4), .cards [data-kind=partTime], [data-metric=pension] { --category: var(--purple); }
+form details:nth-child(5), .cards [data-kind=coast] { --category: var(--green); }
+form details:nth-child(6), .cards [data-kind=returns] { --category: var(--gold); }
+form summary, .cards dt, .milestone-group h3 { color: var(--category); }
+.cards dd > button {
+    font: inherit;
+    line-height: inherit;
+    background: transparent;
+    border: 0;
+    color: inherit;
+    cursor: pointer;
+    text-align: left;
+    padding: 0;
+}
+.cards dd small { display: block; color: var(--muted); font-size: .76rem; font-weight: 500; margin-top: .25rem; }
+.cards dd button:hover small, .cards dd button[aria-expanded=true] small { text-decoration: underline; }
+.explanation { border-left: .28rem solid var(--accent); }
+.notice {
+    border-left: .24rem solid var(--gold);
+    padding: .65rem .85rem;
+    margin: .85rem 0;
+    background: color-mix(in srgb, var(--gold) 10%, var(--panel));
+    color: var(--ink);
+}
+.chart-options { display: flex; flex-wrap: wrap; gap: .35rem; }
+.chart-options button {
+    border: 1px solid var(--line);
+    border-radius: .45rem;
+    padding: .35rem .6rem;
+    background: var(--panel);
+    color: var(--ink);
+    font: inherit;
+    font-size: .86rem;
+    cursor: pointer;
+}
+.chart-options button[aria-pressed=true] {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, var(--panel));
+}
+.chart-options button:disabled { opacity: .48; cursor: default; }
+.chart-guide { font-size: .84rem; }
+.chart-wrap { position: relative; }
+.chart-tooltip {
+    position: absolute;
+    top: 2rem;
+    max-width: min(15rem, 95%);
+    min-width: min(12.5rem, 95%);
+    background: var(--panel);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: .5rem;
+    box-shadow: 0 .5rem 1.5rem #0003;
+    padding: .55rem .65rem;
+    font-size: .78rem;
+    pointer-events: none;
+}
+.chart-tooltip > span { display: block; margin: .18rem 0; }
+.chart-tooltip b { float: right; margin-left: .4rem; font-variant-numeric: tabular-nums; }
+.chart-reading { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.milestone-group { padding: .7rem; border-radius: .5rem; min-width: 0; }
+.milestone-group > strong { display: block; font-size: 1.18rem; margin: .3rem 0; }
+.milestone-group > p { font-size: .79rem; min-height: 2.3em; }
+.milestone-group progress { width: 100%; height: .6rem; accent-color: var(--category); }
+.milestone-jump { border: 0; background: transparent; color: var(--category); padding: 0; font: inherit; text-decoration: underline; cursor: pointer; }

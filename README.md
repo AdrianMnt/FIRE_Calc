@@ -5,12 +5,16 @@ Compare full retirement, Coast FIRE and part-time FIRE using monthly cash flows 
 ## Reading the results
 
 - **Full FIRE** finds the earliest month when your cash, ISA, unlocked pension and State Pension can cover spending and mortgage payments to the end of the planning horizon.
-- **Coast FIRE** finds when you can stop contributing and overpaying the mortgage, while take-home income still covers working expenses and regular mortgage payments. The accumulated portfolio grows until the retirement age you choose.
-- **Part-time FIRE** finds when you can leave full-time work and use part-time pay plus the portfolio. Pay stops on the age boundary you specify. Use gross taxable pay to calculate how the job affects tax on pension income, and net pay for cash flow.
+- **Coast FIRE** finds when you can stop contributing and overpaying the mortgage, while take-home income still covers working expenses and regular mortgage payments. You can enter a separate Coast take-home amount to evaluate a lower-paying job. The accumulated portfolio grows until the retirement age you choose.
+- **Barista FIRE (part-time)** finds when you can leave full-time work and use part-time pay plus the portfolio. Pay stops on the age boundary you specify. Use gross taxable pay to calculate how the job affects tax on pension income, and net pay for cash flow.
 - **Net worth** includes cash, ISA, pension, property and other assets, less mortgage and other debts. Home value and other assets or debts are held flat in today's pounds. The model does not liquidate these assets or generate income from them. Put other debt service into your spending inputs.
-- **Milestones** show balances already reached and the first projected crossing for cash plus ISA, pension and net worth. They use the selected scenario and include £100,000.
+- **Milestones** show balances already reached and the first projected crossing for cash plus ISA, pension and net worth. Progress bars show the current balance against the next target. Select a projected milestone age to inspect that month on the chart. The targets include £100,000.
 
 Results depend on the end age. Every month through that boundary must be funded and any mortgage must be paid off. Each plan uses the same cash-flow code for eligibility, projection and stress testing. The optional spending buffer applies during the eligibility check. A plan can pass the deterministic check and still fail in some simulated market paths.
+
+Select any headline figure for its calculation and the assumptions behind it. The chart offers separate balances, mortgage and stress-test views. Hover, tap or use the keyboard to inspect a month. The mortgage payoff is marked directly on the chart.
+
+Coast and Barista each have an optional mortgage-free requirement. When selected, the model keeps the full-time budget and any mortgage overpayments until payoff, then searches for an eligible start. Both options default to off.
 
 ## Model conventions
 

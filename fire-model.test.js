@@ -202,3 +202,39 @@ test('invalid inputs and rounding to month boundaries', () => {
     const p = prepare({ ...neutral, currentAge: 56.9166667, horizonAge: 58 });
     assert.equal(p.access, 1);
 });
+
+test('a separate Coast income must cover working costs and the regular mortgage', () => {
+    const inputs = { ...neutral, currentAge: 40, horizonAge: 52, coastAge: 50,
+        netIncome: 2000, livingExpenses: 1500, startingIsa: 24000, monthlyIsa: 100,
+        mortgageRemaining: 1200, mortgageBase: 100, targetIncome: 12000, useCoastNet: true };
+    assert.equal(project({ ...inputs, coastNet: 1600 }).plans.coast.start, 0);
+    assert.equal(project({ ...inputs, coastNet: 1599 }).plans.coast.start, 12);
+    assert.equal(project({ ...inputs, coastNet: 1499 }).plans.coast, null);
+    assert.equal(project({ ...inputs, useCoastNet: false, coastNet: 0 }).plans.coast.start, 0);
+});
+
+test('optional mortgage-free gates delay only their own scenario until actual payoff', () => {
+    const inputs = { ...neutral, currentAge: 50, horizonAge: 55, coastAge: 53, partTimeEndAge: 53,
+        startingIsa: 120000, targetIncome: 12000, netIncome: 2300, livingExpenses: 1000,
+        mortgageRemaining: 2400, mortgageBase: 100, mortgageOverpay: 100,
+        partTimeNet: 1000, partTimeGross: 1100 };
+    const first = project(inputs).plans;
+    assert.equal(first.coast.start, 0);
+    assert.equal(first.partTime.start, 0);
+    const coastOnly = project({ ...inputs, coastAfterMortgage: true }, 'coast');
+    assert.equal(coastOnly.plans.full.start, first.full.start);
+    assert.equal(coastOnly.plans.coast.start, 12);
+    assert.equal(coastOnly.plans.partTime.start, 0);
+    assert.equal(coastOnly.baseline.rows[12].mortgage, 0);
+    assert.equal(coastOnly.baseline.rows[12].phase, 'Working');
+    assert.equal(coastOnly.baseline.rows[13].phase, 'Coasting');
+    const partOnly = project({ ...inputs, partTimeAfterMortgage: true }).plans;
+    assert.equal(partOnly.coast.start, 0);
+    assert.equal(partOnly.partTime.start, 12);
+    const tooEarly = project({ ...inputs, partTimeAfterMortgage: true, partTimeEndAge: 51 }).plans;
+    assert.equal(tooEarly.partTime, null);
+    const debtFree = project({ ...inputs, mortgageRemaining: 0, coastAfterMortgage: true,
+        partTimeAfterMortgage: true }).plans;
+    assert.equal(debtFree.coast.start, 0);
+    assert.equal(debtFree.partTime.start, 0);
+});

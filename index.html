@@ -7,12 +7,13 @@
     <link rel="stylesheet" href="styles.css">
     <script defer src="uk-tax.js"></script>
     <script defer src="fire-model.js"></script>
+    <script defer src="chart.js"></script>
     <script defer src="app.js"></script>
 </head>
 <body>
     <header class="page-header">
         <h1>FIRE Calculator</h1>
-        <p>Compare full retirement, Coast FIRE and part-time FIRE in today’s pounds.</p>
+        <p>Compare full retirement, Coast FIRE and Barista FIRE in today’s pounds.</p>
     </header>
     <main>
         <form id="inputs" aria-label="Planning assumptions"></form>
@@ -20,6 +21,11 @@
             <div id="error" role="status" hidden></div>
             <div id="report">
                 <dl class="cards" id="summary" aria-live="polite"></dl>
+                <section id="explanation" class="panel explanation" aria-labelledby="explanation-title" hidden>
+                    <h2 id="explanation-title"></h2>
+                    <div id="explanation-body"></div>
+                </section>
+                <p class="notice" id="pay-warning" hidden></p>
                 <section class="panel">
                     <div class="panel-heading">
                         <h2>Projection</h2>
@@ -27,12 +33,22 @@
                             <select id="mode">
                                 <option value="full">Full FIRE</option>
                                 <option value="coast">Coast FIRE</option>
-                                <option value="partTime">Part-time FIRE</option>
+                                <option value="partTime">Barista FIRE (part-time)</option>
                             </select>
                         </label>
                     </div>
                     <p id="plan-details"></p>
-                    <canvas id="chart" role="img" aria-label="Projected balances by age. The annual projection table provides the underlying baseline values."></canvas>
+                    <div id="chart-options" class="chart-options" role="group" aria-label="Chart view">
+                        <button type="button" data-view="balances" aria-pressed="true">Balances</button>
+                        <button type="button" data-view="mortgage" aria-pressed="false">Mortgage</button>
+                        <button type="button" data-view="stress" aria-pressed="false">Stress test</button>
+                    </div>
+                    <p class="chart-guide" id="chart-guide">Hover or tap to inspect. With the chart focused, use the arrow keys to move one month at a time.</p>
+                    <div class="chart-wrap">
+                        <canvas id="chart" tabindex="0" aria-label="Monthly projection" aria-describedby="chart-guide"></canvas>
+                        <div id="chart-tooltip" class="chart-tooltip" aria-hidden="true" hidden></div>
+                    </div>
+                    <div id="chart-reading" class="chart-reading" aria-live="polite"></div>
                     <div id="legend" class="legend"></div>
                     <p id="stress-result"></p>
                     <details>
@@ -54,14 +70,14 @@
                 </section>
                 <section class="panel">
                     <h2>Milestones</h2>
-                    <p>Current balances count as reached today. Future crossings follow the selected projection.</p>
+                    <p>See what you hold today, how far you are from the next target and when the selected projection first crosses each target. All thresholds use today’s pounds.</p>
                     <div id="milestones" class="milestones"></div>
                 </section>
             </div>
             <details class="panel">
                 <summary>Model assumptions</summary>
                 <p>One person, one defined-contribution pension and one fixed-rate mortgage. Part-time and retirement income tax uses annualised 2026/27 rates in today’s pounds. Tax bands rise with inflation in the projection. The remaining tax-free pension allowance is a fixed nominal limit.</p>
-                <p>Work and Coast budgets use the take-home pay you enter, including any State Pension already included in your budget. The separate State Pension forecast is paid and taxed during part-time work and full retirement.</p>
+                <p>Work and Coast budgets use the take-home pay you enter, including any State Pension already included in your budget. Coast can use its own take-home income. The separate State Pension forecast is paid and taxed during part-time work and full retirement.</p>
                 <p>Cash earns 0% nominal interest. Home value and other assets and debts stay flat in real terms and count towards net worth. The model assumes no sale of these assets or additional cash flows from them. Include other debt costs in your spending assumptions.</p>
                 <p>Each scenario must cover every month to the horizon and clear the mortgage by then. The safety buffer increases the spending used to test eligibility. The projection and stress test use your stated spending.</p>
                 <p>Verify your <a href="https://www.gov.uk/check-state-pension">State Pension forecast</a> and <a href="https://www.gov.uk/hmrc-internal-manuals/pensions-tax-manual/ptm028000">private pension access age</a>. The normal minimum pension age rises from 55 to 57 on 6 April 2028. Enter a scheme-specific age where applicable.</p>

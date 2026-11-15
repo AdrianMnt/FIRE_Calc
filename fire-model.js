@@ -13,7 +13,8 @@ const FireModel = ((tax) => {
         targetIncome: 24000, overFundBuffer: 0, pensionAccessAge: 57,
         statePensionAge: 68, statePensionAmount: 0, region: 'rest',
         lumpSumAllowance: 268275, lumpSumEnabled: false, lumpSumAmount: 0,
-        coastAge: 60, partTimeNet: 0, partTimeGross: 0, partTimeEndAge: 60,
+        coastAge: 60, useCoastNet: false, coastNet: 0, coastAfterMortgage: false,
+        partTimeNet: 0, partTimeGross: 0, partTimeEndAge: 60, partTimeAfterMortgage: false,
         monteCarlo: false, volatility: 15
     });
 
@@ -120,7 +121,8 @@ const FireModel = ((tax) => {
         if (working || phase === 'Coasting') {
             const plannedIsa = working ? p.monthlyIsa : 0;
             const sippCost = working ? p.monthlySipp : 0;
-            flow.surplus = p.netIncome - p.livingExpenses - mortgageCost - plannedIsa - sippCost;
+            const pay = !working && p.useCoastNet ? p.coastNet : p.netIncome;
+            flow.surplus = pay - p.livingExpenses - mortgageCost - plannedIsa - sippCost;
             flow.shortfall = Math.max(0, -flow.surplus);
             if (flow.shortfall <= penny && working) {
                 const formerPayment = p.mortgageRemaining > 0 && p.redirectMortgage
@@ -195,10 +197,12 @@ const FireModel = ((tax) => {
         const plans = { full: null, coast: null, partTime: null };
         const eligibleUntil = { full: p.duration, coast: p.coastEnd,
             partTime: p.partTimeNet > 0 ? p.partTimeEnd : 0 };
+        const mortgageRequired = { coast: p.coastAfterMortgage, partTime: p.partTimeAfterMortgage };
         const s = initial(p);
         for (let m = 0; m < p.duration; m++) {
             for (const mode of Object.keys(plans)) {
                 if (plans[mode] || m >= eligibleUntil[mode]
+                    || (mortgageRequired[mode] && s.mortgage / p.prices[m] > penny)
                     || (mode === 'coast' && p.coastEnd >= p.duration)) continue;
                 const plan = { mode, start: m };
                 if (simulate(p, plan, { start: m, state: s, buffered: true }).success) plans[mode] = plan;
