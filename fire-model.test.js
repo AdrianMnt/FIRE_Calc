@@ -3,13 +3,14 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { incomeTax } = require('./uk-tax.js');
-const { prepare, project, simulate, stressTest, findSuccessAges } = require('./fire-model.js');
+const { prepare, project, simulate, stressTest, findSuccessAges, confirmSuccess } = require('./fire-model.js');
 
 const neutral = {
     currentAge: 50, horizonAge: 60, startingIsa: 0, startingCash: 0, startingPension: 0,
-    mortgageRemaining: 0, mortgageBase: 0, mortgageOverpay: 0, mortgageRate: 0,
+    mortgageRemaining: 0, mortgageBase: 0, mortgageOverpay: 0, mortgageRate: 0, mortgageTerm: 0,
     netIncome: 0, livingExpenses: 0, monthlyIsa: 0, workplacePension: 0, monthlySipp: 0,
-    grossReturn: 0, fees: 0, inflation: 0, targetIncome: 0, statePensionAmount: 0
+    grossReturn: 0, fees: 0, inflation: 0, targetIncome: 0, statePensionAmount: 0,
+    partTimeNet: 0, partTimeGross: 0
 };
 const fullNow = { mode: 'full', start: 0 };
 const workForever = { mode: 'full', start: Infinity };
@@ -290,4 +291,90 @@ test('mortgage-free switches exclude otherwise successful Coast and Barista star
     assert.equal(gated.coast.start, 12);
     assert.equal(gated.partTime.start, 12);
     assert.equal(gated.full.start, open.full.start);
+});
+
+test('stress test classifies failures consistently and counts the first failed month', () => {
+    const fixtures = [
+        [{ currentAge: 56, horizonAge: 58, startingIsa: 999, targetIncome: 12000 }, fullNow, 'bridge', 1],
+        [{ currentAge: 57, horizonAge: 58, startingPension: 999, targetIncome: 12000 }, fullNow, 'later', 1],
+        [{ currentAge: 57, horizonAge: 59, coastAge: 58, livingExpenses: 1 }, { mode: 'coast', start: 0 }, 'budget', 1],
+        [{ currentAge: 57, horizonAge: 58, mortgageRemaining: 1000 }, fullNow, 'mortgage', 12]
+    ];
+    for (const [inputs, plan, reason, month] of fixtures) {
+        const p = prepare({ ...neutral, ...inputs });
+        const report = stressTest(p, plan, { count: 7 });
+        assert.equal(report.successes, 0);
+        assert.equal(report.failures[reason], 7);
+        assert.equal(Object.values(report.failures).reduce((a, b) => a + b), 7);
+        assert.equal(report.medianFailureMonth, month);
+    }
+});
+
+test('fresh-path confirmation equals the same seed in the stress engine', () => {
+    const p = prepare({ ...neutral, currentAge: 55, horizonAge: 60, startingIsa: 26000,
+        startingPension: 80000, volatility: 30, targetIncome: 12000 });
+    const checked = confirmSuccess(p, fullNow, { count: 173 });
+    assert.equal(checked.count, 173);
+    assert.equal(checked.successes,
+        stressTest(p, fullNow, { count: 173, seed: 2246822519 }).successes);
+    assert.notEqual(checked.successes, stressTest(p, fullNow, { count: 173 }).successes);
+});
+
+test('target preview runs at its chosen age and retains the baseline date', () => {
+    const config = { ...neutral, currentAge: 55, horizonAge: 58, startingIsa: 40000, targetIncome: 12000 };
+    const result = project(config, 'full', 7);
+    assert.equal(result.plans.full.start, 0);
+    assert.equal(result.selected.start, 7);
+    assert.equal(result.baseline.rows[7].phase, 'Working');
+    assert.equal(result.baseline.rows[8].phase, 'Retired');
+    assert.equal(result.baseline.rows[7].portfolio, 40000);
+});
+
+test('rolling ISA deposits include payment redirection but exclude growth and opening balance', () => {
+    const config = { ...neutral, currentAge: 40, horizonAge: 42, monthlyIsa: 1500,
+        netIncome: 3000, mortgageRemaining: 9000, mortgageBase: 750,
+        redirectMortgage: true, startingIsa: 100000, grossReturn: 10, targetIncome: 10000000 };
+    const high = project(config);
+    assert.equal(high.selected, null);
+    assert.equal(high.baseline.rows[12].isaAdded, 1500);
+    assert.equal(high.baseline.rows[13].isaAdded, 2250);
+    assert.equal(high.maxIsaDeposits, 27000);
+    assert.equal(project({ ...config, redirectMortgage: false }).maxIsaDeposits, 18000);
+});
+
+test('the fictional defaults fund the working budget and demonstrate all three plans', () => {
+    const result = project({});
+    assert.ok(result.work.surplus > 0);
+    assert.ok(Object.values(result.plans).every(Boolean));
+    assert.ok(result.maxIsaDeposits < 20000);
+    assert.ok(result.baseline.success);
+});
+
+test('cash interest compounds in nominal terms and is independent of market volatility', () => {
+    const p = prepare({ ...neutral, horizonAge: 51, startingCash: 19200, cashInterest: 4,
+        inflation: 2.5, grossReturn: -10, volatility: 30 });
+    const r = simulate(p, fullNow, { record: true, growthAt: () => 0.5 });
+    close(r.rows.at(-1).cash, 19200 * 1.04 / 1.025);
+    const stress = stressTest(p, fullNow, { count: 17 });
+    assert.equal(stress.ranges.at(-1).low, stress.ranges.at(-1).high);
+    close(stress.ranges.at(-1).low, 19200 * 1.04 / 1.025);
+});
+
+test('minimum full retirement applies after Coast and Barista end and before the horizon', () => {
+    const config = { ...neutral, horizonAge: 55, coastAge: 53, partTimeEndAge: 53,
+        partTimeNet: 1000, partTimeGross: 1200, startingIsa: 120000, targetIncome: 12000,
+        volatility: 0 };
+    const options = { count: 8 };
+    const boundary = project({ ...config, minimumRetiredYears: 2 });
+    assert.equal(boundary.plans.coast.start, 0);
+    assert.equal(boundary.plans.partTime.start, 0);
+    const tooShort = project({ ...config, minimumRetiredYears: 2 + 1 / 12 });
+    assert.equal(tooShort.plans.coast, null);
+    assert.equal(tooShort.plans.partTime, null);
+    assert.equal(targetAges(tooShort.p, 90, options).coast, null);
+    assert.equal(targetAges(tooShort.p, 90, options).partTime, null);
+    const nearHorizon = { ...config, startingIsa: 1000 };
+    assert.equal(project(nearHorizon).plans.full.start, 59);
+    assert.equal(project({ ...nearHorizon, minimumRetiredYears: 1 }).plans.full, null);
+    assert.equal(targetAges(prepare({ ...nearHorizon, minimumRetiredYears: 1 }), 90, options).full, null);
 });

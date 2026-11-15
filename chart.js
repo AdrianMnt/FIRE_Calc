@@ -10,10 +10,7 @@ class ProjectionChart {
         });
         this.buttons = [...controls.querySelectorAll('button')];
         for (const button of this.buttons) {
-            button.addEventListener('click', () => {
-                this.view = button.dataset.view;
-                this.refresh();
-            });
+            button.addEventListener('click', () => this.setView(button.dataset.view));
         }
         const inspect = event => {
             if (!this.layout || !this.data) return;
@@ -31,7 +28,7 @@ class ProjectionChart {
         canvas.addEventListener('focus', () => this.select(this.month ?? 0, true));
         canvas.addEventListener('blur', () => this.select(null));
         canvas.addEventListener('keydown', event => {
-            const last = this.data?.rows.at(-1)?.month;
+            const last = this.layout?.last;
             if (last === undefined) return;
             const steps = { ArrowLeft: -1, ArrowRight: 1, PageUp: -12, PageDown: 12 };
             const next = event.key === 'Home' ? 0 : event.key === 'End' ? last
@@ -49,6 +46,12 @@ class ProjectionChart {
         this.month = null;
         this.announce('');
         if (!data.stress && this.view === 'stress') this.view = 'balances';
+        this.refresh();
+    }
+
+    setView(view) {
+        if (!this.data || (view === 'stress' && !this.data.stress)) return;
+        this.view = view;
         this.refresh();
     }
 
@@ -77,8 +80,8 @@ class ProjectionChart {
         return this.series;
     }
 
-    showMonth(month) {
-        if (this.view !== 'balances') {
+    showMonth(month, { keepView = false } = {}) {
+        if (!keepView && this.view !== 'balances') {
             this.view = 'balances';
             this.refresh();
         }
@@ -89,7 +92,7 @@ class ProjectionChart {
 
     select(month, speak = false) {
         if (!this.data) return;
-        const last = this.data.rows.at(-1).month;
+        const last = this.layout?.last ?? this.data.rows.at(-1).month;
         const selected = month === null ? null : Math.max(0, Math.min(last, month));
         if (selected !== this.month) {
             this.month = selected;
@@ -106,6 +109,7 @@ class ProjectionChart {
         const { canvas, data } = this;
         if (!data || canvas.clientWidth < 100 || canvas.clientHeight < 100) return;
         const { rows, stress, mortgageFree, start } = data;
+        const bands = this.view === 'stress' ? stress.ranges : [];
         const width = canvas.clientWidth;
         const height = canvas.clientHeight;
         const ratio = window.devicePixelRatio || 1;
@@ -120,11 +124,12 @@ class ProjectionChart {
         const right = width - 25;
         const top = 30;
         const bottom = height - 29;
-        const last = rows.at(-1).month;
+        const last = bands.length ? bands.length - 1 : rows.at(-1).month;
+        if (this.month !== null) this.month = Math.min(this.month, last);
+        const rowAt = month => rows[month] ?? { month, age: rows[0].age + month / 12 };
         this.layout = { left, right, last };
         const x = month => left + month / Math.max(1, last) * (right - left);
         const lines = this.lines();
-        const bands = this.view === 'stress' ? stress.ranges : [];
         const values = rows.flatMap(row => lines.map(([key]) => row[key]));
         const low = Math.min(0, ...values);
         const high = Math.max(low + 1, ...values, ...bands.map(band => band.high ?? 0));
@@ -148,16 +153,16 @@ class ProjectionChart {
         ctx.textAlign = 'center';
         const ticks = Math.min(width < 520 ? 3 : 5, last);
         for (let tick = 0; tick <= ticks; tick++) {
-            const row = rows[Math.round(tick * last / Math.max(1, ticks))];
+            const row = rowAt(Math.round(tick * last / Math.max(1, ticks)));
             ctx.fillText(this.age(row.age), x(row.month), height - 7);
         }
 
         if (bands.length) {
-            const funded = rows.filter(row => bands[row.month].surviving > 0);
+            const funded = bands.map((band, month) => ({ ...band, month })).filter(band => band.surviving > 0);
             if (funded.length) {
                 ctx.beginPath();
-                funded.forEach(row => ctx.lineTo(x(row.month), y(bands[row.month].high)));
-                funded.reverse().forEach(row => ctx.lineTo(x(row.month), y(bands[row.month].low)));
+                funded.forEach(row => ctx.lineTo(x(row.month), y(row.high)));
+                funded.reverse().forEach(row => ctx.lineTo(x(row.month), y(row.low)));
                 ctx.closePath();
                 ctx.fillStyle = color('--band');
                 ctx.fill();
@@ -205,14 +210,16 @@ class ProjectionChart {
             ctx.fillText(label, Math.max(4, Math.min(marker + 7, width - ctx.measureText(label).width - 4)), 15);
         }
 
-        const row = this.month === null ? null : rows[this.month];
+        const row = this.month === null ? null : rowAt(this.month);
         this.tooltip.hidden = !row;
         if (!row) return;
         const crosshair = x(row.month);
         ctx.strokeStyle = color('--muted');
         ctx.lineWidth = 1;
         segment(crosshair, top, crosshair, bottom);
-        for (const [key, , variable] of lines) this.dot(ctx, crosshair, y(row[key]), color(variable));
+        for (const [key, , variable] of lines) {
+            if (row[key] !== undefined) this.dot(ctx, crosshair, y(row[key]), color(variable));
+        }
         this.showReading(row, lines, bands[row.month], crosshair, width);
     }
 
@@ -230,7 +237,7 @@ class ProjectionChart {
         const values = lines.map(([key, label, colour]) => {
             const line = this.key(label, colour);
             const amount = document.createElement('b');
-            amount.textContent = this.gbp(row[key]);
+            amount.textContent = row[key] === undefined ? '—' : this.gbp(row[key]);
             line.append(amount);
             return line;
         });
@@ -239,6 +246,7 @@ class ProjectionChart {
         if (band?.surviving) this.tooltip.append(
             `${this.gbp(band.low)} to ${this.gbp(band.high)} · ${band.surviving} funded paths`
         );
+        else if (band) this.tooltip.append('No funded paths at this age');
         this.tooltip.style.left = Math.max(0, Math.min(width - this.tooltip.offsetWidth,
             crosshair + (crosshair > width / 2 ? -this.tooltip.offsetWidth - 12 : 12))) + 'px';
     }

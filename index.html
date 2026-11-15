@@ -17,7 +17,11 @@
     </header>
     <main>
         <aside class="settings">
-            <h2 id="assumptions-title">Planning assumptions</h2>
+            <div class="settings-heading">
+                <h2 id="assumptions-title">Planning assumptions</h2>
+                <button id="load-example" type="button">Load example</button>
+            </div>
+            <p class="settings-note">Inputs are saved in this browser.</p>
             <form id="inputs" aria-labelledby="assumptions-title"></form>
         </aside>
         <section class="results" aria-label="Projection results">
@@ -29,6 +33,9 @@
                     <div id="explanation-body"></div>
                 </section>
                 <p class="notice" id="pay-warning" hidden></p>
+                <p class="notice" id="isa-warning" hidden><span id="isa-warning-detail"></span>
+                    <a href="https://www.gov.uk/individual-savings-accounts/how-isas-work">Check the ISA rules</a>.
+                </p>
                 <section class="panel risk-panel" aria-labelledby="risk-title">
                     <div class="panel-heading">
                         <div>
@@ -42,7 +49,7 @@
                             <label for="risk-target">Target success (%)</label>
                             <input id="risk-target" type="number" min="0.1" max="100" step="0.1" value="90" required>
                         </div>
-                        <p class="chart-guide">Uses your stated spending and mortgage-free switches. The projection below shows the baseline plan.</p>
+                        <p class="chart-guide">Uses your stated spending and mortgage-free switches. Select a result to inspect its projection. A second set of paths checks how sensitive the result is to the simulated returns.</p>
                         <p id="risk-status" role="status"></p>
                         <dl id="risk-results" class="risk-results" aria-label="Earliest ages at target"></dl>
                     </div>
@@ -58,7 +65,12 @@
                             </select>
                         </label>
                     </div>
+                    <div class="projection-basis" id="projection-basis" hidden>
+                        <strong id="projection-basis-text"></strong>
+                        <button id="show-baseline" type="button">Show baseline</button>
+                    </div>
                     <p id="plan-details"></p>
+                    <ul id="plan-events" class="plan-events" aria-label="Key ages in this projection"></ul>
                     <div id="chart-options" class="chart-options" role="group" aria-label="Chart view">
                         <button type="button" data-view="balances" aria-pressed="true">Balances</button>
                         <button type="button" data-view="mortgage" aria-pressed="false">Mortgage</button>
@@ -72,6 +84,7 @@
                     <div id="chart-reading" class="chart-reading" aria-live="polite"></div>
                     <div id="legend" class="legend"></div>
                     <p id="stress-result"></p>
+                    <dl id="stress-breakdown" class="stress-breakdown" hidden></dl>
                     <details>
                         <summary>Annual projection table</summary>
                         <p>Balances are measured at the displayed age. Cash flows are totals since the previous row.</p>
@@ -99,11 +112,21 @@
                 <summary>Model assumptions</summary>
                 <p>One person, one defined-contribution pension and one fixed-rate mortgage. Part-time and retirement income tax uses annualised 2026/27 rates in today’s pounds. Tax bands rise with inflation in the projection. The remaining tax-free pension allowance is a fixed nominal limit.</p>
                 <p>Work and Coast budgets use the take-home pay you enter, including any State Pension already included in your budget. Coast can use its own take-home income. The separate State Pension forecast is paid and taxed during part-time work and full retirement.</p>
-                <p>Cash earns 0% nominal interest. Home value and other assets and debts stay flat in real terms and count towards net worth. The model assumes no sale of these assets or additional cash flows from them. Include other debt costs in your spending assumptions.</p>
-                <p>Each scenario must cover every month to the horizon and clear the mortgage by then. The safety buffer increases the spending used to test eligibility. The projection and stress test use your stated spending.</p>
+                <p>Cash earns the nominal interest rate you enter after tax. Home value and other assets and debts stay flat in real terms and count towards net worth. The model assumes no sale of these assets or additional cash flows from them. Include other debt costs in your spending assumptions.</p>
+                <p>Each scenario must cover every month to the horizon and clear the mortgage by then. The safety buffer increases the spending used to test the baseline start. The target search, projection and stress test use your stated spending. A horizon of 95 means spending is funded up to the 95th birthday. You can also require a minimum period of full retirement before the horizon.</p>
                 <p>Verify your <a href="https://www.gov.uk/check-state-pension">State Pension forecast</a> and <a href="https://www.gov.uk/hmrc-internal-manuals/pensions-tax-manual/ptm028000">private pension access age</a>. The normal minimum pension age rises from 55 to 57 on 6 April 2028. Enter a scheme-specific age where applicable.</p>
             </details>
         </section>
     </main>
+    <dialog id="example-dialog" aria-labelledby="example-title">
+        <form method="dialog">
+            <h2 id="example-title">Load the example plan?</h2>
+            <p>This replaces the values saved for this calculator in your browser with fictional example figures.</p>
+            <div class="dialog-actions">
+                <button value="cancel" autofocus>Cancel</button>
+                <button value="load" class="primary-action">Load example</button>
+            </div>
+        </form>
+    </dialog>
 </body>
 </html>

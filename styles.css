@@ -1,32 +1,4 @@
-:root {
-    color-scheme: light dark;
-    --page: #f1f5f4;
-    --panel: #fff;
-    --ink: #152a2a;
-    --muted: #526663;
-    --line: #ccd9d5;
-    --accent: #08665e;
-    --isa: #2564bc;
-    --pension: #168269;
-    --mortgage: #af4239;
-    --worth: #79519c;
-    --band: rgba(37, 100, 188, .16);
-}
-@media (prefers-color-scheme: dark) {
-    :root {
-        --page: #122020;
-        --panel: #1b2d2d;
-        --ink: #edf7f6;
-        --muted: #b4c8c5;
-        --line: #3e5653;
-        --accent: #84daca;
-        --isa: #80b6ff;
-        --pension: #71d5ac;
-        --mortgage: #ff9c91;
-        --worth: #d3adf6;
-        --band: rgba(128, 182, 255, .2);
-    }
-}
+:root { color-scheme: light dark; }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--page); color: var(--ink); font: 1rem/1.45 "Instrument Sans", "Segoe UI", sans-serif; }
 .page-header, main { max-width: 90rem; margin: auto; padding: 1.4rem clamp(1rem, 4vw, 3rem); }
@@ -282,3 +254,58 @@ canvas { height: clamp(16rem, 35vw, 27rem); margin-top: 0; }
 #risk-status:empty { margin: 0; }
 @media (max-width: 775px) { main { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 410px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.settings-heading, .projection-basis, .dialog-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+}
+.settings-heading h2 { margin: 0; }
+.settings-note { margin: .22rem 0 .7rem; font-size: .76rem; }
+.settings-heading button, .target-link, .projection-basis button, .dialog-actions button {
+    border: 1px solid var(--line);
+    border-radius: .4rem;
+    background: var(--chart-surface);
+    color: var(--ink);
+    padding: .3rem .55rem;
+    font: inherit;
+    font-size: .8rem;
+    cursor: pointer;
+}
+.risk-results small { display: block; margin-top: .15rem; font-size: .78rem; font-weight: 450; }
+.target-link { margin-top: .55rem; color: var(--accent); font-weight: 600; }
+.target-link:hover, .settings-heading button:hover, .projection-basis button:hover { border-color: var(--accent); }
+.projection-basis { padding: .5rem .65rem; border: 1px solid var(--line); border-radius: .55rem; color: var(--accent); }
+.stress-breakdown { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); gap: .45rem; }
+.stress-breakdown > div { padding: .5rem .65rem; border-radius: .45rem; background: var(--chart-surface); }
+.stress-breakdown dt { font-size: .76rem; }
+.stress-breakdown dd { font-size: .98rem; }
+dialog { max-width: min(28rem, calc(100vw - 2rem)); border: 1px solid var(--line); border-radius: .85rem; background: var(--panel); color: var(--ink); padding: 1.2rem; box-shadow: var(--lift); }
+dialog::backdrop { background: #070b14b5; }
+.dialog-actions { justify-content: flex-end; margin-top: .9rem; }
+.dialog-actions .primary-action { border-color: var(--accent); color: var(--accent); }
+[hidden] { display: none !important; }
+
+.plan-events { display: flex; flex-wrap: wrap; gap: .35rem; list-style: none; padding: 0; margin: .65rem 0 .9rem; }
+.plan-events:empty { margin: 0; }
+.plan-events button {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .25rem .45rem;
+    border: 1px solid var(--line);
+    border-radius: .42rem;
+    background: var(--chart-surface);
+    color: var(--muted);
+    padding: .27rem .5rem;
+    font: inherit;
+    font-size: .76rem;
+    cursor: pointer;
+}
+.plan-events button strong { color: var(--ink); }
+.plan-events button[data-event="mortgage"] strong { color: var(--mortgage); }
+.plan-events button[data-event="pension"] strong { color: var(--pension); }
+.plan-events button[data-event="start"] strong { color: var(--phase-line); }
+.plan-events button:hover { border-color: var(--accent); }

@@ -4,17 +4,17 @@ const FireModel = ((tax) => {
     const penny = 0.005;
     const months = age => Math.round(age * 12);
     const defaults = Object.freeze({
-        currentAge: 32, horizonAge: 95, startingIsa: 10000, startingPension: 10000,
-        startingCash: 0, homeValue: 0, otherAssets: 0, otherDebt: 0,
-        mortgageRemaining: 200000, mortgageBase: 1000, mortgageOverpay: 900,
-        mortgageRate: 4.1, mortgageTerm: 0, redirectMortgage: false,
-        netIncome: 4000, livingExpenses: 2000, monthlyIsa: 100, workplacePension: 0,
+        currentAge: 35, horizonAge: 95, startingIsa: 40000, startingPension: 60000,
+        startingCash: 10000, cashInterest: 0, homeValue: 250000, otherAssets: 0, otherDebt: 0,
+        mortgageRemaining: 150000, mortgageBase: 800, mortgageOverpay: 200,
+        mortgageRate: 4, mortgageTerm: 25, redirectMortgage: false,
+        netIncome: 3500, livingExpenses: 1700, monthlyIsa: 500, workplacePension: 600,
         monthlySipp: 0, sippGrossFactor: 1, grossReturn: 7, fees: 0.25, inflation: 2.5,
-        targetIncome: 24000, overFundBuffer: 0, pensionAccessAge: 57,
+        targetIncome: 26400, minimumRetiredYears: 0, overFundBuffer: 0, pensionAccessAge: 57,
         statePensionAge: 68, statePensionAmount: 0, region: 'rest',
         lumpSumAllowance: 268275, lumpSumEnabled: false, lumpSumAmount: 0,
         coastAge: 60, useCoastNet: false, coastNet: 0, coastAfterMortgage: false,
-        partTimeNet: 0, partTimeGross: 0, partTimeEndAge: 60, partTimeAfterMortgage: false,
+        partTimeNet: 1800, partTimeGross: 2100, partTimeEndAge: 60, partTimeAfterMortgage: false,
         monteCarlo: false, volatility: 15
     });
 
@@ -31,11 +31,11 @@ const FireModel = ((tax) => {
         }
         if (p.currentAge < 18 || p.horizonAge > 120 || months(p.horizonAge) <= months(p.currentAge)
             || p.coastAge > 120 || p.partTimeEndAge > 120 || p.pensionAccessAge > 120
-            || p.statePensionAge > 120 || p.mortgageTerm > 102) {
+            || p.statePensionAge > 120 || p.mortgageTerm > 102 || p.minimumRetiredYears > 102) {
             throw new Error('Use ages from 18 to 120 and a horizon after your current age.');
         }
         if (p.grossReturn < -50 || p.grossReturn > 100 || p.inflation < -20 || p.inflation > 100
-            || p.fees > 20 || p.mortgageRate > 100 || p.volatility > 100
+            || p.fees > 20 || p.cashInterest > 100 || p.mortgageRate > 100 || p.volatility > 100
             || p.overFundBuffer > 100 || p.sippGrossFactor < 1 || p.sippGrossFactor > 2
             || !['rest', 'scotland'].includes(p.region)) {
             throw new Error('Check the tax region and return, inflation, fee and savings rates.');
@@ -49,6 +49,8 @@ const FireModel = ((tax) => {
         return {
             ...p, age, duration, realGrowth, monthlyGrowth: realGrowth ** (1 / 12),
             prices: Array.from({ length: duration + 1 }, (_, m) => (1 + p.inflation / 100) ** (m / 12)),
+            monthlyCashGrowth: (1 + p.cashInterest / 100) ** (1 / 12),
+            minimumRetirement: months(p.minimumRetiredYears),
             access: months(p.pensionAccessAge) - age,
             stateStart: months(p.statePensionAge) - age,
             coastEnd: months(p.coastAge) - age,
@@ -132,7 +134,7 @@ const FireModel = ((tax) => {
         const paid = mortgagePayment(s.mortgage, p, m, working);
         s.mortgage = Math.max(0, s.mortgage * (1 + p.mortgageRate / 1200) - paid);
         const mortgageCost = paid / price;
-        const flow = { phase, mortgageCost, statePension: 0, tax: 0, drawn: 0, shortfall: 0, surplus: 0 };
+        const flow = { phase, mortgageCost, statePension: 0, tax: 0, drawn: 0, shortfall: 0, surplus: 0, isaAdded: 0 };
 
         if (working || phase === 'Coasting') {
             const plannedIsa = working ? p.monthlyIsa : 0;
@@ -144,7 +146,8 @@ const FireModel = ((tax) => {
                 const formerPayment = p.mortgageRemaining > 0 && p.redirectMortgage
                     ? Math.max(0, (p.mortgageBase + p.mortgageOverpay - paid) / price) : 0;
                 const redirected = Math.min(Math.max(0, flow.surplus), formerPayment);
-                s.isa += plannedIsa + redirected;
+                flow.isaAdded = plannedIsa + redirected;
+                s.isa += flow.isaAdded;
                 s.pension += p.workplacePension + sippCost * p.sippGrossFactor;
                 flow.surplus -= redirected;
             }
@@ -182,7 +185,7 @@ const FireModel = ((tax) => {
         s.isa *= growth;
         s.pension *= growth;
         s.drawdown *= growth;
-        s.cash *= price / p.prices[m + 1];
+        s.cash *= p.monthlyCashGrowth * price / p.prices[m + 1];
         return flow;
     }
 
@@ -212,9 +215,13 @@ const FireModel = ((tax) => {
     const modes = ['full', 'coast', 'partTime'];
 
     function eligibleUntil(p, mode) {
-        if (mode === 'coast') return p.coastEnd < p.duration ? p.coastEnd : 0;
-        if (mode === 'partTime') return p.partTimeNet > 0 ? Math.min(p.duration, p.partTimeEnd) : 0;
-        return p.duration;
+        const lastFullStart = p.duration - p.minimumRetirement;
+        if (mode === 'coast') return p.coastEnd < p.duration && p.coastEnd <= lastFullStart ? p.coastEnd : 0;
+        if (mode === 'partTime') {
+            return p.partTimeNet > 0 && (!p.minimumRetirement || p.partTimeEnd <= lastFullStart)
+                ? Math.min(p.duration, p.partTimeEnd) : 0;
+        }
+        return Math.min(p.duration, lastFullStart + 1);
     }
 
     function canStart(p, mode, month, mortgage) {
@@ -247,13 +254,26 @@ const FireModel = ((tax) => {
         }));
     }
 
-    function project(inputs, mode = 'full') {
+    // Rolling 12-month deposits in today's pounds. This is a planning flag, not a tax-year calculation.
+    function maxAnnualIsaDeposits(rows) {
+        let total = 0;
+        let largest = 0;
+        for (let m = 1; m < rows.length; m++) {
+            total += rows[m].isaAdded;
+            if (m > 12) total -= rows[m - 12].isaAdded;
+            largest = Math.max(largest, total);
+        }
+        return largest;
+    }
+
+    function project(inputs, mode = 'full', startOverride) {
         const p = prepare(inputs);
         const plans = findPlans(p);
-        const selected = plans[mode] ?? null;
+        const selected = startOverride === undefined ? plans[mode] ?? null : { mode, start: startOverride };
         const baseline = simulate(p, selected ?? { mode: 'full', start: Infinity }, { record: true });
         const work = advance(initial(p), p, 0, 'Working', p.monthlyGrowth, false);
-        return { p, plans, selected, baseline, work, milestones: milestones(baseline.rows) };
+        return { p, plans, selected, baseline, work, milestones: milestones(baseline.rows),
+            maxIsaDeposits: maxAnnualIsaDeposits(baseline.rows) };
     }
 
     function marketPaths(p, count, seed) {
@@ -305,10 +325,21 @@ const FireModel = ((tax) => {
     function stressTest(p, plan, { count = 500, seed = 123456789 } = {}) {
         let successes = 0;
         const quantiles = Array.from({ length: p.duration + 1 }, () => []);
+        const failures = { bridge: 0, later: 0, budget: 0, mortgage: 0 };
+        const failureMonths = [];
         const paths = marketPaths(p, count, seed);
         for (let i = 0; i < count; i++) {
             const path = simulate(p, plan, { record: true, growthAt: month => paths[i][month] });
             if (path.success) successes++;
+            else {
+                const m = path.failureMonth - 1;
+                const phase = phaseAt(plan, p, m);
+                const reason = path.mortgageOutstanding ? 'mortgage'
+                    : phase === 'Working' || phase === 'Coasting' ? 'budget'
+                    : m < p.access ? 'bridge' : 'later';
+                failures[reason]++;
+                failureMonths.push(path.failureMonth);
+            }
             for (const row of path.rows) {
                 if (row.shortfall > penny || (path.mortgageOutstanding && row.month === p.duration)) break;
                 quantiles[row.month].push(row.portfolio);
@@ -319,10 +350,23 @@ const FireModel = ((tax) => {
             return { surviving: values.length, low: values[Math.floor((values.length - 1) * 0.10)],
                 high: values[Math.floor((values.length - 1) * 0.90)] };
         });
-        return { successes, count, ranges };
+        failureMonths.sort((a, b) => a - b);
+        const medianFailureMonth = failureMonths.length
+            ? (failureMonths[Math.floor((failureMonths.length - 1) / 2)]
+                + failureMonths[Math.floor(failureMonths.length / 2)]) / 2 : null;
+        return { successes, count, ranges, failures, medianFailureMonth };
     }
 
-    return Object.freeze({ defaults, prepare, project, simulate, stressTest, findSuccessAges });
+    function confirmSuccess(p, plan, { count = 500, seed = 2246822519 } = {}) {
+        const paths = marketPaths(p, count, seed);
+        let successes = 0;
+        for (const path of paths) {
+            if (simulate(p, plan, { growthAt: month => path[month] }).success) successes++;
+        }
+        return { successes, count };
+    }
+
+    return Object.freeze({ defaults, prepare, project, simulate, stressTest, findSuccessAges, confirmSuccess });
 })(typeof module === 'undefined' ? UKTax : require('./uk-tax.js'));
 
 if (typeof module !== 'undefined') module.exports = FireModel;

@@ -1,6 +1,6 @@
 'use strict';
 
-const { defaults, project, simulate, stressTest, findSuccessAges } = FireModel;
+const { defaults, project, simulate, stressTest, findSuccessAges, confirmSuccess } = FireModel;
 const get = id => document.getElementById(id);
 const storageKey = 'pro-fire-simulator-state-v2';
 const pounds = new Intl.NumberFormat('en-GB', {
@@ -16,6 +16,7 @@ const groups = [
     ['Profile and balances', [
         ['currentAge', 'Current age'], ['horizonAge', 'Plan through age'],
         ['startingIsa', 'ISA balance (£)'], ['startingCash', 'Cash savings (£)'],
+        ['cashInterest', 'Annual cash interest after tax (%)', 'Fixed nominal rate. Use 0 for cash with no interest.'],
         ['startingPension', 'Defined-contribution pension balance (£)'],
         ['homeValue', 'Home value (£)'], ['otherAssets', 'Other assets (£)'],
         ['otherDebt', 'Other debt (£)', 'Exclude the mortgage. Include debt payments in spending.']
@@ -38,6 +39,7 @@ const groups = [
     ]],
     ['Retirement and pensions', [
         ['targetIncome', 'Annual retirement spending excluding mortgage (£)'],
+        ['minimumRetiredYears', 'Minimum years of full retirement', '0 uses the planning horizon alone. Enter 20, for example, to require 20 years with no work income before the horizon.'],
         ['overFundBuffer', 'Extra spending for eligibility test (%)'],
         ['pensionAccessAge', 'Private pension access age', 'Check your scheme rules.'],
         ['statePensionAge', 'State Pension start age'],
@@ -222,7 +224,11 @@ function explainScenario(key, result, inputs) {
     const plan = plans[key];
     const mortgageRequired = key === 'coast' ? p.coastAfterMortgage : key === 'partTime' && p.partTimeAfterMortgage;
     if (!plan) {
-        if (key === 'partTime' && !p.partTimeNet) return ['Enter your monthly part-time take-home and taxable pay to test a reduced-hours plan.'];
+        const fullRetirementStart = key === 'coast' ? p.coastEnd : key === 'partTime' ? p.partTimeEnd : 0;
+        if (p.minimumRetirement && p.duration - Math.max(0, fullRetirementStart) < p.minimumRetirement) {
+            return ['The minimum full-retirement period does not fit before the planning horizon at these ages.'];
+        }
+        if (key === 'partTime' && p.partTimeNet <= 0) return ['Enter your monthly part-time take-home and taxable pay to test a reduced-hours plan.'];
         const coastPay = p.useCoastNet ? p.coastNet : p.netIncome;
         if (key === 'coast' && coastPay < p.livingExpenses) return [
             `Coast take-home pay of ${gbp(coastPay)} falls short of ${gbp(p.livingExpenses)} in monthly working expenses before any mortgage payment. Coasting requires pay to cover those bills so the investments can stay untouched.`
@@ -281,7 +287,7 @@ function renderSummary(cards, result, inputs, mortgageFree) {
             mortgage: mortgageFree
                 ? `${scenarioNames[mode.value]} clears the mortgage ${mortgageFree.month === 0 ? 'today' : 'at age ' + age(mortgageFree.age)}. The mortgage chart shows this payoff month. The model stops overpayments when you leave full-time work. A specified maturity collects any remaining balance in its final month.`
                 : 'The selected projection ends before the mortgage is cleared. Check the budget, payments and term.',
-            returns: `The model compounds a ${p.grossReturn}% nominal return, applies ${p.fees}% fees and divides by a ${p.inflation}% inflation factor. Cash is assumed to earn zero nominal interest. The baseline holds the investment return steady each year.`
+            returns: `The model compounds a ${p.grossReturn}% nominal return, applies ${p.fees}% fees and divides by a ${p.inflation}% inflation factor. Cash earns the entered ${p.cashInterest}% nominal rate after tax. The baseline holds the investment return steady each year.`
         };
         get('explanation-title').textContent = label + ' · ' + value;
         const details = key in result.plans ? explainScenario(key, result, inputs) : [other[key]];
@@ -310,6 +316,33 @@ let currentRiskSearch;
 let previousRisk;
 let latestInputs;
 let latestPrepared;
+let targetPreview;
+
+function riskKey(inputs) {
+    const { monteCarlo, ...assumptions } = inputs;
+    return JSON.stringify([assumptions, riskTarget.valueAsNumber]);
+}
+
+function addRiskCardAction(card, plan, key, confirm, target) {
+    const checked = 100 * confirm.successes / confirm.count;
+    card.append(
+        element('small', (100 * plan.successes / plan.count).toFixed(1) + '% on search paths'),
+        element('small', checked.toFixed(1) + '% on a fresh set of ' + confirm.count + ' paths')
+    );
+    const button = element('button', 'View projection');
+    button.type = 'button';
+    button.className = 'target-link';
+    button.setAttribute('aria-label', 'View ' + scenarioNames[plan.mode] + ' projection at the target age');
+    button.addEventListener('click', () => {
+        targetPreview = { key, plan, target };
+        mode.value = plan.mode;
+        update();
+        chart.setView('stress');
+        get('show-baseline').focus();
+        get('projection-basis').scrollIntoView({ block: 'nearest' });
+    });
+    card.append(button);
+}
 
 function updateRisk(p, inputs) {
     const settings = get('risk-settings');
@@ -324,25 +357,24 @@ function updateRisk(p, inputs) {
         return;
     }
     const target = riskTarget.valueAsNumber;
-    const { monteCarlo, ...assumptions } = inputs;
-    const key = JSON.stringify([assumptions, target]);
+    const key = riskKey(inputs);
     if (currentRiskSearch?.key === key) return;
-    function show(plans) {
+    function show(plans, checks) {
         output.replaceChildren(...Object.entries(plans).map(([name, plan]) => {
             const card = element('div');
             card.dataset.kind = name;
             const value = plan ? 'Age ' + age((p.age + plan.start) / 12)
-                : name === 'partTime' && !p.partTimeNet ? 'Off' : 'No qualifying age';
-            card.append(element('dt', scenarioNames[name]), element('dd', value));
-            if (plan) card.append(element('small', (100 * plan.successes / plan.count).toFixed(1)
-                + '% · ' + plan.successes + ' of ' + plan.count + ' paths'));
+                : name === 'partTime' && p.partTimeNet <= 0 ? 'Off' : 'No qualifying age';
+            const details = element('dd', value);
+            card.append(element('dt', scenarioNames[name]), details);
+            if (plan) addRiskCardAction(details, plan, key, checks[name], target);
             return card;
         }));
         status.textContent = '';
     }
     if (previousRisk?.key === key) {
         currentRiskSearch = null;
-        show(previousRisk.plans);
+        show(previousRisk.plans, previousRisk.checks);
         return;
     }
     output.replaceChildren();
@@ -351,23 +383,33 @@ function updateRisk(p, inputs) {
     currentRiskSearch = search;
     function runSlice() {
         if (currentRiskSearch !== search) return;
-        const deadline = performance.now() + 20;
-        let step;
-        do {
-            step = search.steps.next();
-            if (step.done) {
-                currentRiskSearch = null;
-                previousRisk = { key, plans: step.value };
-                show(step.value);
-                return;
+        try {
+            const deadline = performance.now() + 20;
+            let step;
+            do {
+                step = search.steps.next();
+                if (step.done) {
+                    currentRiskSearch = null;
+                    const plans = step.value;
+                    const checks = Object.fromEntries(Object.entries(plans)
+                        .filter(([, plan]) => plan)
+                        .map(([name, plan]) => [name, confirmSuccess(p, plan)]));
+                    previousRisk = { key, plans, checks };
+                    show(plans, checks);
+                    return;
+                }
+            } while (performance.now() < deadline);
+            const decade = Math.floor(step.value / 120);
+            if (decade !== search.decade) {
+                search.decade = decade;
+                status.textContent = 'Checking starts around age ' + age((p.age + step.value) / 12) + '…';
             }
-        } while (performance.now() < deadline);
-        const decade = Math.floor(step.value / 120);
-        if (decade !== search.decade) {
-            search.decade = decade;
-            status.textContent = 'Checking starts around age ' + age((p.age + step.value) / 12) + '…';
+            setTimeout(runSlice, 0);
+        } catch (error) {
+            currentRiskSearch = null;
+            status.textContent = 'The search stopped before it finished.';
+            console.error('Success-target search failed', error);
         }
-        setTimeout(runSlice, 0);
     }
     setTimeout(runSlice, 0);
 }
@@ -381,6 +423,57 @@ function saveInputs(inputs) {
     }
 }
 
+function renderPlanEvents(result, mortgageFree) {
+    const { p, selected, baseline } = result;
+    const last = baseline.rows.filter(row => !(row.shortfall > 0.005)).at(-1).month;
+    const events = [];
+    if (selected) {
+        events.push([selected.start, scenarioNames[selected.mode] + ' starts', 'start']);
+        const retired = baseline.rows.find(row => row.phase === 'Retired');
+        if (retired && retired.month - 1 !== selected.start) {
+            events.push([retired.month - 1, 'Full retirement starts', 'start']);
+        }
+    }
+    if (mortgageFree?.month > 0) events.push([mortgageFree.month, 'Mortgage clears', 'mortgage']);
+    if (p.startingPension > 0 || p.workplacePension > 0 || p.monthlySipp > 0) {
+        events.push([p.access, 'Private pension available', 'pension']);
+    }
+    const statePayment = baseline.rows.find(row => row.statePension > 0);
+    if (statePayment) events.push([statePayment.month - 1, 'State Pension enters projection', 'pension']);
+    events.sort(([a], [b]) => a - b);
+    get('plan-events').replaceChildren(...events.filter(([month]) => month >= 0 && month <= last).map(([month, label, type]) => {
+        const li = element('li');
+        const button = element('button', label);
+        button.type = 'button';
+        button.dataset.event = type;
+        button.append(element('strong', 'Age ' + age((p.age + month) / 12)));
+        button.addEventListener('click', () => chart.showMonth(month, { keepView: true }));
+        li.append(button);
+        return li;
+    }));
+}
+
+function renderFailureBreakdown(stress, p) {
+    const breakdown = get('stress-breakdown');
+    breakdown.hidden = !stress || stress.successes === stress.count;
+    const labels = {
+        bridge: 'Shortfall before private pension access',
+        later: 'Shortfall after private pension access',
+        budget: 'Working or Coast budget shortfall',
+        mortgage: 'Mortgage balance at the horizon'
+    };
+    const reasons = stress ? Object.entries(stress.failures)
+        .filter(([, count]) => count > 0).map(([key, count]) => [labels[key], count]) : [];
+    if (stress?.medianFailureMonth !== null && stress?.medianFailureMonth !== undefined) {
+        reasons.push(['Typical failure age among failed paths', 'Age ' + age((p.age + stress.medianFailureMonth) / 12)]);
+    }
+    breakdown.replaceChildren(...reasons.map(([label, value]) => {
+        const row = element('div');
+        row.append(element('dt', label), element('dd', value));
+        return row;
+    }));
+}
+
 function update() {
     try {
         const inputs = {};
@@ -389,15 +482,18 @@ function update() {
             inputs[key] = input.type === 'checkbox' ? input.checked
                 : input.type === 'number' ? input.valueAsNumber : input.value;
         }
-        const result = project(inputs, mode.value);
+        if (!riskEnabled.checked || !riskTarget.validity.valid || targetPreview?.key !== riskKey(inputs)
+            || targetPreview?.plan.mode !== mode.value) targetPreview = null;
+        const result = project(inputs, mode.value, targetPreview?.plan.start);
         const { p, plans, selected, baseline, work } = result;
         const opening = baseline.rows[0];
         const mortgageFree = baseline.rows.find(row => row.mortgage <= 0.005 && !(row.shortfall > 0.005));
         const planAge = plan => plan ? `Age ${age((p.age + plan.start) / 12)}` : 'Outside plan';
+        const basis = targetPreview ? ' · baseline' : '';
         const cards = [
-            ['full', 'Full FIRE', planAge(plans.full)],
-            ['coast', 'Coast FIRE', planAge(plans.coast)],
-            ['partTime', 'Barista FIRE', p.partTimeNet > 0 ? planAge(plans.partTime) : 'Off'],
+            ['full', 'Full FIRE' + basis, planAge(plans.full)],
+            ['coast', 'Coast FIRE' + basis, planAge(plans.coast)],
+            ['partTime', 'Barista FIRE' + basis, p.partTimeNet > 0 ? planAge(plans.partTime) : 'Off'],
             ['worth', 'Net worth today', gbp(opening.netWorth)],
             ['accessible', 'Cash and ISA today', gbp(opening.accessible)],
             ['work', 'Working cash left this month', gbp(work.surplus)],
@@ -409,6 +505,13 @@ function update() {
         payWarning.hidden = !(p.partTimeNet > 0 && p.partTimeNet === p.partTimeGross
             && p.partTimeGross * 12 > 12570);
         payWarning.textContent = 'Part-time take-home and taxable pay are the same. For ordinary UK employment above the personal allowance, deductions generally reduce take-home pay. Check these figures against an expected payslip.';
+        const isaWarning = get('isa-warning');
+        isaWarning.hidden = result.maxIsaDeposits <= 20000.005;
+        get('isa-warning-detail').textContent = 'This projection includes up to ' + gbp(result.maxIsaDeposits)
+            + ' of ISA deposits in a 12-month period in today’s pounds. The 2026/27 allowance is £20,000 per tax year. Check planned contributions and any mortgage-payment redirection.';
+        get('projection-basis').hidden = !targetPreview;
+        get('projection-basis-text').textContent = targetPreview
+            ? 'Projection at the ' + targetPreview.target + '% search age' : '';
         let description = selected
             ? `${scenarioNames[selected.mode]} starts at age ${age(baseline.rows[selected.start].age)} with ${gbp(baseline.rows[selected.start].portfolio)} in cash, ISA and pension.`
             : 'This scenario has no eligible start. The chart shows the working projection.';
@@ -416,10 +519,12 @@ function update() {
             ? ' Mortgage debt remains at the horizon.'
             : ` The budget runs short by ${gbp(baseline.rows.at(-1).shortfall)} in the month ending at age ${age(baseline.rows.at(-1).age)}.`;
         get('plan-details').textContent = description;
-        const stress = p.monteCarlo && selected ? stressTest(p, selected) : null;
+        const stress = (p.monteCarlo || targetPreview) && selected ? stressTest(p, selected) : null;
         get('stress-result').textContent = stress
             ? `${stress.successes} of ${stress.count} simulated paths fund the plan and clear the mortgage at this start age. In the Stress test view, the shaded range shows the middle 80% of cash, ISA and pension balances among paths still funded at each age.`
             : p.monteCarlo ? 'Stress testing needs an eligible start for the selected scenario.' : '';
+        renderFailureBreakdown(stress, p);
+        renderPlanEvents(result, mortgageFree);
         renderTimeline(result);
         renderMilestones(result);
         get('report').hidden = false;
@@ -442,6 +547,31 @@ function update() {
     }
 }
 
+const exampleDialog = get('example-dialog');
+get('load-example').addEventListener('click', () => {
+    exampleDialog.returnValue = 'cancel';
+    exampleDialog.showModal();
+});
+exampleDialog.addEventListener('close', () => {
+    if (exampleDialog.returnValue !== 'load') return;
+    for (const [key, input] of fields) {
+        if (input.type === 'checkbox') input.checked = defaults[key];
+        else input.value = defaults[key];
+    }
+    mode.value = 'full';
+    riskEnabled.checked = false;
+    riskTarget.value = 90;
+    targetPreview = null;
+    openExplanation = null;
+    update();
+    chart.setView('balances');
+});
+get('show-baseline').addEventListener('click', () => {
+    targetPreview = null;
+    update();
+    chart.setView('balances');
+    mode.focus();
+});
 let timer;
 get('inputs').addEventListener('submit', event => event.preventDefault());
 get('inputs').addEventListener('input', () => {
@@ -449,10 +579,17 @@ get('inputs').addEventListener('input', () => {
     timer = setTimeout(update, 180);
 });
 mode.addEventListener('change', update);
-for (const control of [riskEnabled, riskTarget]) {
-    control.addEventListener('change', () => {
-        updateRisk(latestPrepared, latestInputs);
-        if (latestInputs) saveInputs(latestInputs);
-    });
+function changeRiskControls() {
+    if (targetPreview) {
+        targetPreview = null;
+        update();
+        return;
+    }
+    updateRisk(latestPrepared, latestInputs);
+    if (latestInputs) saveInputs(latestInputs);
 }
+
+riskEnabled.addEventListener('change', changeRiskControls);
+riskTarget.addEventListener('input', changeRiskControls);
+riskTarget.addEventListener('change', changeRiskControls);
 update();
