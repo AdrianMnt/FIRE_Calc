@@ -27,6 +27,34 @@
         <section class="results" aria-label="Projection results">
             <div id="error" role="status" hidden></div>
             <div id="report">
+                <section class="panel decision-panel" aria-labelledby="decision-title">
+                    <div class="decision-heading">
+                        <div>
+                            <h2 id="decision-title">Compare your next move</h2>
+                            <p>Test UK part-time work and two Romanian cash purchases at dates you choose.</p>
+                        </div>
+                        <button type="button" class="decision-link" id="decision-edit">Edit budgets and pay</button>
+                    </div>
+                    <form id="decision-form" class="decision-controls">
+                        <label>UK part-time start age <input id="decision-uk" type="number" step="any" required></label>
+                        <label>Romania move and retire age <input id="decision-move" type="number" step="any" required></label>
+                        <label>Lower home price (£) <input id="decision-low" type="number" step="any" min="0" required></label>
+                        <label>Higher home price (£) <input id="decision-high" type="number" step="any" min="0" required></label>
+                        <label>Investment return
+                            <select id="decision-return">
+                                <option value="">Entered return</option>
+                                <option value="3">3% real</option>
+                                <option value="4">4% real</option>
+                                <option value="6">6% real</option>
+                            </select>
+                        </label>
+                        <label class="switch"><input id="decision-stress" type="checkbox"> Stress-test these dates</label>
+                    </form>
+                    <p class="decision-note">All figures are in today’s pounds. The cards use your shared household, spending and relocation settings, including the spending buffer. The Romanian monthly budget includes healthcare and covers only the period shown.</p>
+                    <p id="decision-error" class="notice" role="status" hidden></p>
+                    <div id="decision-cards" class="decision-cards" aria-live="polite"></div>
+                    <p id="decision-mortgage" class="decision-note" hidden></p>
+                </section>
                 <dl class="cards" id="summary" aria-live="polite"></dl>
                 <section id="explanation" class="panel explanation" aria-labelledby="explanation-title" hidden>
                     <h2 id="explanation-title"></h2>
@@ -110,7 +138,7 @@
                                     <th scope="col">New investments abroad</th><th scope="col">Lifetime ISA</th>
                                     <th scope="col">Pension</th><th scope="col">Mortgage</th>
                                     <th scope="col">Home equity</th><th scope="col">Net worth</th>
-                                    <th scope="col">Gross withdrawals</th><th scope="col">Gross State Pension</th>
+                                    <th scope="col">Annual lump overpayments</th><th scope="col">Gross withdrawals</th><th scope="col">Gross State Pension</th>
                                     <th scope="col">Income Tax</th><th scope="col">Shortfall</th>
                                 </tr></thead>
                                 <tbody id="timeline"></tbody>

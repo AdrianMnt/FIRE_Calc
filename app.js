@@ -1,6 +1,6 @@
 'use strict';
 
-const { defaults, project, compare, partTimeEnabled, simulate, stressTest, findSuccessAges, confirmSuccess } = FireModel;
+const { defaults, project, compare, decision, partTimeEnabled, simulate, stressTest, findSuccessAges, confirmSuccess } = FireModel;
 const get = id => document.getElementById(id);
 const storageKey = 'pro-fire-simulator-state-v2';
 const pounds = new Intl.NumberFormat('en-GB', {
@@ -25,6 +25,8 @@ const groups = [
         ['mortgageRemaining', 'Mortgage balance (£)'],
         ['mortgageBase', 'Regular monthly payment (£)', 'Fixed nominal payment including interest.'],
         ['mortgageOverpay', 'Monthly overpayment while working (£)'],
+        ['annualOverpayRate', 'Annual mortgage overpayment (% of balance)', 'Paid from cash savings only, while working. Check your lender’s limit and allocation.'],
+        ['firstAnnualOverpayMonth', 'Months to first annual overpayment', '1 applies after the first regular monthly payment. The annual payment repeats every 12 months.'],
         ['mortgageRate', 'Mortgage rate (%)', 'Nominal annual rate divided by 12.'],
         ['mortgageTerm', 'Years to mortgage maturity', '0 uses payments until payoff. A term pays any remainder at maturity.'],
         ['redirectMortgage', 'Invest freed mortgage payments while working']
@@ -57,15 +59,19 @@ const groups = [
         ['coastAfterMortgage', 'Start Coast FIRE only after the mortgage is paid off'],
         ['useCoastNet', 'Use a different take-home pay during Coast FIRE'],
         ['coastNet', 'Coast monthly take-home pay (£)', 'Used only when the option above is checked.'],
-        ['partTimeNet', 'Part-time monthly take-home pay (£)', 'Enter pay after Income Tax, National Insurance and payroll deductions. 0 disables part-time FIRE.'],
-        ['partTimeGross', 'Part-time monthly taxable pay (£)', 'Enter before Income Tax and after any salary sacrifice.'],
+        ['partTimeNet', 'UK household take-home while part-time (£/month)', 'Enter pay after Income Tax, National Insurance and payroll deductions. 0 disables part-time FIRE.'],
+        ['partTimeGross', 'UK household taxable pay while part-time (£/month)', 'Enter before Income Tax and after any salary sacrifice.'],
         ['partTimeEndAge', 'Age part-time work ends'],
+        ['partTimePension', 'Monthly gross workplace pension while part-time (£)', 'Enter the amount credited to the pension. Part-time take-home should already reflect any employee contribution.'],
+        ['usePartTimeBudget', 'Use a separate UK part-time budget'],
+        ['partTimeBudget', 'Monthly UK part-time spending excluding mortgage (£)', 'Used only when the option above is checked.'],
         ['partTimeAfterMortgage', 'Start Barista FIRE only after the mortgage is paid off']
     ]],
     ['Romania relocation', [
         ['relocate', 'Model sale of the UK home and a cash purchase in Romania'],
         ['moveAge', 'Age at relocation'],
-        ['replacementHome', 'Romanian home price (£ equivalent)', 'Try £75,000 and £100,000 to compare purchase prices.'],
+        ['replacementHome', 'Romanian home price for the timeline (£ equivalent)', 'The comparison cards have their own two editable prices.'],
+        ['saleHomeValue', 'Expected UK sale price in today’s pounds (£)', '0 uses the opening home value in real pounds. Enter a lower or higher value to test the sale price.'],
         ['saleCosts', 'UK sale and mortgage exit costs (£)', 'Include agent, legal and early repayment charges.'],
         ['purchaseCosts', 'Romanian purchase costs (£ equivalent)'],
         ['movingCosts', 'Moving, FX and setup costs (£ equivalent)'],
@@ -111,6 +117,7 @@ const fields = new Map();
 for (const [title, specs] of groups) {
     const section = element('details');
     section.open = title === groups[0][0];
+    section.dataset.settings = title;
     section.append(element('summary', title));
     for (const [key, name, help] of specs) {
         const label = element('label');
@@ -158,6 +165,20 @@ const mode = get('mode');
 const riskEnabled = get('risk-enabled');
 const riskTarget = get('risk-target');
 riskEnabled.checked = saved.riskEnabled === true;
+const decisionFields = {
+    uk: get('decision-uk'), move: get('decision-move'), low: get('decision-low'),
+    high: get('decision-high'), realReturn: get('decision-return'), stress: get('decision-stress')
+};
+const decisionDefaults = { uk: '', move: '', low: 80000, high: 110000, realReturn: '', stress: false };
+function resetDecision(values = {}) {
+    for (const [key, input] of Object.entries(decisionFields)) {
+        const value = values[key] ?? decisionDefaults[key];
+        if (input.type === 'checkbox') input.checked = value === true;
+        else input.value = value;
+    }
+}
+resetDecision(saved.decision);
+
 riskTarget.value = saved.riskTarget ?? 90;
 if (['full', 'coast', 'partTime'].includes(saved.mode)) mode.value = saved.mode;
 const scenarioNames = { full: 'Full FIRE', coast: 'Coast FIRE', partTime: 'Barista FIRE' };
@@ -174,10 +195,10 @@ function renderTimeline(result) {
     const { rows } = result.baseline;
     const payoff = rows.find(row => row.mortgage <= 0.005 && !(row.shortfall > 0.005));
     const tableRows = [];
-    let totals = [0, 0, 0, 0];
+    let totals = [0, 0, 0, 0, 0];
     for (const row of rows) {
-        const [drawn, state, tax, shortfall] = totals;
-        totals = [drawn + (row.drawn ?? 0), state + (row.statePension ?? 0),
+        const [overpay, drawn, state, tax, shortfall] = totals;
+        totals = [overpay + (row.annualOverpay ?? 0), drawn + (row.drawn ?? 0), state + (row.statePension ?? 0),
             tax + (row.tax ?? 0), shortfall + (row.shortfall ?? 0)];
         const next = rows[row.month + 1];
         if (row.month % 12 !== 0 && row.month !== result.selected?.start
@@ -192,7 +213,7 @@ function renderTimeline(result) {
             tr.append(element('td', value === null ? 'Outside plan' : gbp(value)));
         }
         tableRows.push(tr);
-        totals = [0, 0, 0, 0];
+        totals = [0, 0, 0, 0, 0];
     }
     get('timeline').replaceChildren(...tableRows);
 }
@@ -447,6 +468,8 @@ function updateRisk(p, inputs) {
 function saveInputs(inputs) {
     try {
         localStorage.setItem(storageKey, JSON.stringify({ ...inputs, mode: mode.value,
+            decision: Object.fromEntries(Object.entries(decisionFields)
+                .map(([key, input]) => [key, input.type === 'checkbox' ? input.checked : input.value])),
             riskEnabled: riskEnabled.checked, riskTarget: riskTarget.validity.valid ? riskTarget.valueAsNumber : 90 }));
     } catch {
         // The calculator can still run when storage is unavailable.
@@ -509,6 +532,99 @@ function renderFailureBreakdown(stress, p) {
     }));
 }
 
+let previousDecision;
+function decisionCard(result, index, runStress) {
+    const { p, transition, purchase, failure, constraint } = result;
+    const section = element('section');
+    section.className = 'decision-card';
+    section.dataset.location = index === 0 ? 'uk' : 'romania';
+    const startAge = age((p.age + result.plan.start) / 12);
+    const label = index === 0 ? 'UK · Part-time' : 'Romania · ' + gbp(p.replacementHome);
+    const constraintLabels = {
+        pay: 'Enter part-time take-home pay',
+        partTimeEnd: 'Part-time work already ends by this age',
+        mortgageGate: 'Mortgage-free requirement not met',
+        minimumYears: 'Minimum retirement period not met'
+    };
+    let status = 'Funded to age ' + age(p.horizonAge);
+    if (constraint) status = constraintLabels[constraint];
+    else if (failure) {
+        const failedAge = age((p.age + failure.month - 1) / 12);
+        const kind = !transition ? 'Working budget shortfall'
+            : failure.relocation?.shortfall > 0.005 ? 'Purchase shortfall' : 'Spending shortfall';
+        status = kind + ' at ' + failedAge;
+    } else if (result.mortgageOutstanding) status = 'Mortgage still due at the horizon';
+    const headline = element('p', status);
+    headline.className = 'decision-status';
+    headline.dataset.funded = String(result.success);
+    section.append(element('h3', label), element('p', 'Starts at age ' + startAge), headline);
+
+    const figures = [];
+    if (transition) {
+        if (purchase) figures.push(['UK equity at sale', gbp(purchase.equity)],
+            ['Sale, purchase and move costs', gbp(purchase.costs)],
+            [purchase.net < 0 ? 'Savings used for purchase' : 'Cash released by move', gbp(Math.abs(purchase.net))],
+            ['Available after the purchase', result.availableAfterPurchase === null ? 'Purchase unfunded' : gbp(result.availableAfterPurchase)]);
+        else if (index === 0) figures.push(['Accessible at switch', gbp(transition.accessible)],
+            ['Mortgage at switch', gbp(transition.mortgage)]);
+        if (result.firstGap != null) figures.push([
+            result.firstGap < -0.005 ? 'First month surplus' : 'First month from savings',
+            gbp(Math.abs(result.firstGap))
+        ]);
+    }
+    if (result.bridge) figures.push(['Monthly budget through age ' + age(result.bridge.endAge),
+        gbp(result.bridge.monthly)]);
+    if (failure) figures.push(['First unfunded amount', gbp(failure.shortfall)]);
+    if (runStress && !constraint) {
+        const stress = stressTest(p, result.plan, { buffered: true });
+        figures.push(['Funded in market simulations', stress.successes + ' / ' + stress.count]);
+    }
+    const list = element('dl');
+    for (const [name, value] of figures) {
+        const row = element('div');
+        row.append(element('dt', name), element('dd', value));
+        list.append(row);
+    }
+    section.append(list);
+    return section;
+}
+
+function renderDecision(inputs, p) {
+    const error = get('decision-error');
+    const cards = get('decision-cards');
+    const mortgage = get('decision-mortgage');
+    try {
+        if (Object.values(decisionFields).some(input => input.validity.badInput)) {
+            throw new Error('Enter a valid number for each age and price.');
+        }
+        decisionFields.uk.placeholder = String(p.age / 12);
+        const moveDefault = p.moveAge < p.currentAge || p.moveAge >= p.horizonAge ? p.age / 12 : p.moveAge;
+        decisionFields.move.placeholder = String(moveDefault);
+        const options = {
+            ukAge: decisionFields.uk.value === '' ? p.age / 12 : decisionFields.uk.valueAsNumber,
+            moveAge: decisionFields.move.value === '' ? moveDefault : decisionFields.move.valueAsNumber,
+            lowerPrice: decisionFields.low.valueAsNumber, higherPrice: decisionFields.high.valueAsNumber,
+            realReturn: decisionFields.realReturn.value === '' ? null : Number(decisionFields.realReturn.value)
+        };
+        const key = JSON.stringify([inputs, options, decisionFields.stress.checked]);
+        if (previousDecision === key && error.hidden) return;
+        const results = decision(inputs, options);
+        cards.replaceChildren(...results.map((result, index) => decisionCard(result, index, decisionFields.stress.checked)));
+        const move = results[1];
+        mortgage.hidden = move.annualOverpayment === 0 && move.unfundedAnnualOverpayment === 0;
+        mortgage.textContent = 'Before the move, cash savings fund ' + gbp(move.annualOverpayment)
+            + ' in annual mortgage overpayments. Planned amounts that cash could not cover total '
+            + gbp(move.unfundedAnnualOverpayment) + '.';
+        error.hidden = true;
+        previousDecision = key;
+    } catch (problem) {
+        error.textContent = problem.message;
+        error.hidden = false;
+        mortgage.hidden = true;
+        cards.replaceChildren();
+    }
+}
+
 let previousComparison;
 
 function renderComparison(inputs, p) {
@@ -562,6 +678,7 @@ function update() {
             ['mortgage', 'Mortgage-free in projection', mortgageFree ? `Age ${age(mortgageFree.age)}` : 'Outside plan'],
             ['returns', 'Annual real return after fees', `${((p.realGrowth - 1) * 100).toFixed(2)}%`]
         ];
+        renderDecision(inputs, p);
         renderSummary(cards, result, inputs, mortgageFree);
         const payWarning = get('pay-warning');
         payWarning.hidden = !(p.partTimeNet > 0 && p.partTimeNet === p.partTimeGross
@@ -614,6 +731,23 @@ get('comparison-panel').addEventListener('toggle', () => {
     if (get('comparison-panel').open && latestPrepared) renderComparison(latestInputs, latestPrepared);
 });
 
+get('decision-edit').addEventListener('click', () => {
+    const section = fields.get('partTimeNet').closest('details');
+    fields.get('abroadRetirement').closest('details').open = true;
+    section.open = true;
+    fields.get('partTimeNet').focus();
+});
+get('decision-form').addEventListener('submit', event => event.preventDefault());
+let decisionTimer;
+get('decision-form').addEventListener('input', () => {
+    clearTimeout(decisionTimer);
+    decisionTimer = setTimeout(() => {
+        if (!latestPrepared) return;
+        renderDecision(latestInputs, latestPrepared);
+        saveInputs(latestInputs);
+    }, 180);
+});
+
 const exampleDialog = get('example-dialog');
 get('load-example').addEventListener('click', () => {
     exampleDialog.returnValue = 'cancel';
@@ -625,6 +759,7 @@ exampleDialog.addEventListener('close', () => {
         if (input.type === 'checkbox') input.checked = defaults[key];
         else input.value = defaults[key];
     }
+    resetDecision();
     mode.value = 'full';
     riskEnabled.checked = false;
     riskTarget.value = 90;

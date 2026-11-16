@@ -3,7 +3,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { incomeTax } = require('./uk-tax.js');
-const { prepare, project, compare, simulate, stressTest, findSuccessAges, confirmSuccess } = require('./fire-model.js');
+const { prepare, project, compare, decision, simulate, stressTest, findSuccessAges, confirmSuccess } = require('./fire-model.js');
 
 const neutral = {
     currentAge: 50, horizonAge: 60, startingIsa: 0, startingCash: 0, startingPension: 0,
@@ -24,6 +24,110 @@ const moveFixture = {
 function close(actual, expected, tolerance = 0.01) {
     assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} differs from ${expected}`);
 }
+
+test('annual overpayments use available cash after regular payment, repeat, and stop after full-time work', () => {
+    const p = prepare({ ...neutral, horizonAge: 53, mortgageRemaining: 10000, mortgageBase: 100,
+        netIncome: 150, monthlyCash: 50, startingCash: 500, annualOverpayRate: 10,
+        firstAnnualOverpayMonth: 2 });
+    const working = simulate(p, workForever, { record: true }).rows;
+    close(working[2].annualOverpay, 600);
+    close(working[2].annualOverpayUnfunded, 380);
+    close(working[2].mortgage, 9200);
+    assert.equal(working[2].cash, 0);
+    close(working[14].mortgage, 7400);
+    close(working[14].annualOverpay, 600);
+    close(working[14].annualOverpayUnfunded, 200);
+    const switched = simulate(p, { mode: 'coast', start: 1 }, { record: true }).rows;
+    assert.equal(switched[2].annualOverpay, 0);
+    close(switched[2].cash, 550);
+    assert.throws(() => prepare({ ...neutral, firstAnnualOverpayMonth: 1.5 }), /whole number/);
+});
+
+test('annual overpayments and FX-equivalent purchase costs conserve value at zero inflation', () => {
+    const p = prepare({ ...moveFixture, moveAge: 50.5, mortgageRemaining: 10000,
+        mortgageBase: 100, netIncome: 100, startingCash: 3000, firstAnnualOverpayMonth: 1,
+        annualOverpayRate: 10 });
+    const rows = simulate(p, { mode: 'full', start: 6 }, { record: true }).rows;
+    close(rows[1].annualOverpay, 990);
+    close(rows[1].netWorth - rows[0].netWorth, 100);
+    close(rows[6].cash, 2010);
+    close(rows[7].netWorth, rows[6].netWorth - 5000);
+    close(rows[7].relocation.equity, 91590);
+    assert.ok(compare({ ...moveFixture, mortgageRemaining: 25, annualOverpayRate: 5 })
+        .some(row => row.label === 'No mortgage overpayment'));
+});
+
+test('a UK sale price override applies only at sale and changes purchase proceeds pound for pound', () => {
+    const p = prepare({ ...moveFixture, moveAge: 50.5, saleHomeValue: 85000 });
+    const rows = simulate(p, { mode: 'full', start: 6 }, { record: true }).rows;
+    assert.equal(rows[6].equity, 100000);
+    assert.equal(rows[7].relocation.equity, 85000);
+    assert.equal(rows[7].cash, 15000);
+    assert.equal(rows[7].equity, 65000);
+    assert.equal(rows[7].netWorth, rows[6].netWorth - 20000);
+});
+
+test('Barista uses a separate UK budget and continues the stated pension credit only during work', () => {
+    const p = prepare({ ...neutral, startingCash: 1000, partTimeGross: 650, partTimeNet: 600,
+        partTimePension: 150, usePartTimeBudget: true, partTimeBudget: 700, targetIncome: 600,
+        partTimeEndAge: 50.5, horizonAge: 51 });
+    const { rows, success } = simulate(p, { mode: 'partTime', start: 0 }, { record: true });
+    assert.equal(success, true);
+    assert.equal(rows[1].budgetGap, 100);
+    assert.equal(rows[6].cash, 400);
+    assert.equal(rows[6].pension, 900);
+    assert.equal(rows[7].budgetGap, 50);
+    assert.equal(rows.at(-1).pension, 900);
+    assert.equal(rows.at(-1).cash, 100);
+});
+
+test('fixed-date decision compares two prices without changing the timeline or forcing a common start', () => {
+    const fixture = { ...moveFixture, relocate: false, moveAge: 59, horizonAge: 54,
+        pensionAccessAge: 53, replacementHome: 97000, partTimeNet: 1500,
+        partTimeGross: 1800, partTimeEndAge: 53, targetIncome: 24000,
+        abroadRetirement: 12000, startingIsa: 6000 };
+    const settings = { ukAge: 50, moveAge: 51, lowerPrice: 75000, higherPrice: 90000, realReturn: 0 };
+    const [uk, low, high] = decision(fixture, settings);
+    assert.equal(uk.plan.start, 0);
+    assert.equal(low.plan.start, 12);
+    assert.equal(uk.firstGap, 500);
+    assert.equal(low.firstGap, 1000);
+    assert.equal(low.availableAfterPurchase, 26000);
+    assert.equal(high.availableAfterPurchase, 11000);
+    assert.equal(low.bridge.monthly, 1083);
+    assert.equal(high.bridge.monthly, 458);
+    assert.equal(low.bridge.endAge, 53);
+    assert.equal(low.failure.month, 39);
+    assert.equal(fixture.replacementHome, 97000);
+    const [,,unfunded] = decision(fixture, { ...settings, higherPrice: 110000 });
+    assert.equal(unfunded.purchase.shortfall, 9000);
+    assert.equal(unfunded.availableAfterPurchase, null);
+    assert.equal(unfunded.bridge, null);
+    assert.throws(() => decision(fixture, { ...settings, ukAge: 54 }), /part-time age/);
+    assert.throws(() => decision(fixture, { ...settings, lowerPrice: 100000 }), /ascending order/);
+});
+
+test('fixed-date decision distinguishes phase constraints and a shortfall before the phase starts', () => {
+    const fixture = { ...moveFixture, mortgageRemaining: 10000, netIncome: 500,
+        livingExpenses: 600, partTimeNet: 300, partTimeGross: 500, partTimeEndAge: 50.5,
+        partTimeAfterMortgage: true };
+    const settings = { ukAge: 50, moveAge: 50.5, lowerPrice: 75000, higherPrice: 90000 };
+    const [uk, low] = decision(fixture, settings);
+    assert.equal(uk.constraint, 'mortgageGate');
+    assert.equal(low.transition, undefined);
+    assert.equal(low.failure.month, 1);
+    assert.equal(low.failure.phase, 'Working');
+    assert.equal(low.purchase, undefined);
+    const [ended] = decision({ ...fixture, netIncome: 600 }, { ...settings, ukAge: 50.5 });
+    assert.equal(ended.constraint, 'partTimeEnd');
+});
+
+test('fixed-date stress testing can use the same spending buffer as the decision cards', () => {
+    const p = prepare({ ...neutral, horizonAge: 51, startingIsa: 12000,
+        targetIncome: 12000, volatility: 0, overFundBuffer: 10 });
+    assert.equal(stressTest(p, fullNow, { count: 4 }).successes, 4);
+    assert.equal(stressTest(p, fullNow, { count: 4, buffered: true }).successes, 0);
+});
 
 test('Lifetime ISA stays locked until 60 and never substitutes for an earlier private pension', () => {
     const inputs = { ...neutral, currentAge: 59.75, horizonAge: 60.25, startingLisa: 4000,

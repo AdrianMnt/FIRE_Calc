@@ -309,3 +309,59 @@ dialog::backdrop { background: #070b14b5; }
 .plan-events button[data-event="pension"] strong { color: var(--pension); }
 .plan-events button[data-event="start"] strong { color: var(--phase-line); }
 .plan-events button:hover { border-color: var(--accent); }
+
+.decision-panel {
+    border-top: 3px solid var(--accent);
+    background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 9%, var(--panel)), var(--panel) 55%);
+}
+.decision-heading { display: flex; flex-wrap: wrap; align-items: start; justify-content: space-between; gap: .5rem; }
+.decision-heading h2 { font-size: clamp(1.35rem, 3vw, 2rem); letter-spacing: -.035em; }
+.decision-heading p { margin: .35rem 0 .65rem; }
+.decision-link {
+    font: inherit;
+    font-size: .83rem;
+    font-weight: 650;
+    color: var(--accent);
+    border: 1px solid var(--line);
+    border-radius: .5rem;
+    padding: .4rem .65rem;
+    background: var(--chart-surface);
+    cursor: pointer;
+}
+.decision-link:hover { border-color: var(--accent); }
+.decision-controls {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.2rem), 1fr));
+    align-items: end;
+    gap: .45rem .65rem;
+    margin-top: .25rem;
+}
+.decision-controls label { font-size: .8rem; margin: 0; }
+.decision-controls select { width: 100%; margin-top: .22rem; }
+.decision-controls .switch { min-height: 2.25rem; border-radius: .5rem; }
+.decision-note { font-size: .81rem; }
+.decision-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 12.2rem), 1fr));
+    align-items: stretch;
+    gap: .6rem;
+}
+.decision-card {
+    --location: var(--green);
+    min-width: 0;
+    padding: .85rem;
+    background: var(--chart-surface);
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--location);
+    border-radius: .75rem;
+}
+.decision-card[data-location=uk] { --location: var(--blue); }
+.decision-card h3 { font-size: 1rem; color: var(--location); }
+.decision-card > p { margin: .32rem 0; font-size: .8rem; }
+.decision-card .decision-status { font-size: 1rem; color: var(--rose); font-weight: 700; }
+.decision-card .decision-status[data-funded=true] { color: var(--green); }
+.decision-card dl { margin: .65rem 0 0; }
+.decision-card dl > div { padding: .38rem 0; border-top: 1px solid var(--line); }
+.decision-card dt { font-size: .77rem; }
+.decision-card dd { margin: .04rem 0 0; font-size: .96rem; font-variant-numeric: tabular-nums; }
+#comparison td:last-child { min-width: 16rem; white-space: normal; text-align: left; }

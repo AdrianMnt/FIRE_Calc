@@ -8,16 +8,18 @@ const FireModel = ((tax) => {
         startingCash: 10000, startingLisa: 0, cashInterest: 0, homeValue: 250000, otherAssets: 0, otherDebt: 0,
         mortgageRemaining: 150000, mortgageBase: 800, mortgageOverpay: 200,
         mortgageRate: 4, mortgageTerm: 25, redirectMortgage: false,
+        annualOverpayRate: 0, firstAnnualOverpayMonth: 12,
         netIncome: 3500, livingExpenses: 1700, monthlyCash: 0, monthlyIsa: 500, workplacePension: 600,
         monthlySipp: 0, sippGrossFactor: 1, grossReturn: 7, fees: 0.25, inflation: 2.5,
         targetIncome: 26400, minimumRetiredYears: 0, overFundBuffer: 0, pensionAccessAge: 57,
         statePensionAge: 68, statePensionAmount: 0, region: 'rest',
         lumpSumAllowance: 268275, lumpSumEnabled: false, lumpSumAmount: 0,
         coastAge: 60, useCoastNet: false, coastNet: 0, coastAfterMortgage: false,
-        partTimeNet: 1800, partTimeGross: 2100, partTimeEndAge: 60, partTimeAfterMortgage: false,
+        partTimeNet: 1800, partTimeGross: 2100, partTimePension: 0,
+        usePartTimeBudget: false, partTimeBudget: 2200, partTimeEndAge: 60, partTimeAfterMortgage: false,
         monteCarlo: false, volatility: 15,
         splitHouseholdTax: false, pensionTaxExtra: 0,
-        relocate: false, moveAge: 38, replacementHome: 90000, saleCosts: 4000,
+        relocate: false, moveAge: 38, replacementHome: 90000, saleHomeValue: 0, saleCosts: 4000,
         purchaseCosts: 3000, movingCosts: 5000, abroadLiving: 1250, abroadRetirement: 15000,
         abroadHealthcare: 150, abroadNetIncome: 2000, abroadCoastNet: 1500, abroadPartTimeNet: 1000,
         abroadInvest: 300, abroadPension: 0, abroadPensionTax: 20, abroadStateTax: 20,
@@ -45,6 +47,10 @@ const FireModel = ((tax) => {
             || p.overFundBuffer > 100 || p.sippGrossFactor < 1 || p.sippGrossFactor > 2
             || !['rest', 'scotland'].includes(p.region)) {
             throw new Error('Check the tax region and return, inflation, fee and savings rates.');
+        }
+        if (p.annualOverpayRate > 100 || !Number.isInteger(p.firstAnnualOverpayMonth)
+            || p.firstAnnualOverpayMonth < 1 || p.firstAnnualOverpayMonth > 102 * 12) {
+            throw new Error('Use an annual overpayment percentage up to 100 and a whole number of months until the first payment.');
         }
         if (p.abroadPensionTax > 100 || p.abroadStateTax > 100 || p.pensionTaxExtra > 20) {
             throw new Error('Use effective tax rates up to 100% abroad and a UK pension tax uplift up to 20 points.');
@@ -120,7 +126,7 @@ const FireModel = ((tax) => {
     }
 
     function relocateHome(s, p, price, lisaAvailable) {
-        const equity = s.home - s.mortgage / price;
+        const equity = (p.saleHomeValue || s.home) - s.mortgage / price;
         const costs = p.saleCosts + p.purchaseCosts + p.movingCosts;
         const net = equity - p.replacementHome - costs;
         const available = s.cash + s.taxable + s.isa + (lisaAvailable ? s.lisa : 0);
@@ -183,7 +189,7 @@ const FireModel = ((tax) => {
         const working = phase === 'Working';
         const abroad = m >= p.move;
         const flow = { phase, abroad, mortgageCost: 0, statePension: 0, tax: 0, drawn: 0,
-            shortfall: 0, surplus: 0, isaAdded: 0 };
+            shortfall: 0, surplus: 0, isaAdded: 0, annualOverpay: 0, annualOverpayUnfunded: 0 };
         if (m === p.move) {
             flow.relocation = relocateHome(s, p, price, m >= p.lisaAccess);
             if (flow.relocation.shortfall > penny) {
@@ -225,9 +231,12 @@ const FireModel = ((tax) => {
             const stateGross = m >= p.stateStart ? p.statePensionAmount / 12 : 0;
             flow.statePension = stateGross;
             flow.tax = abroad ? stateGross * p.abroadStateTax / 100 : ukIncomeTax(p, taxablePay, stateGross);
-            const budget = abroad ? p.abroadRetirement / 12 + p.abroadHealthcare : p.targetIncome / 12;
+            const ukBudget = partTime && p.usePartTimeBudget ? p.partTimeBudget : p.targetIncome / 12;
+            const budget = abroad ? p.abroadRetirement / 12 + p.abroadHealthcare : ukBudget;
+            if (partTime && !abroad) s.pension += p.partTimePension;
             const spend = budget * (1 + (buffered ? p.overFundBuffer / 100 : 0));
             let need = spend + mortgageCost - netPay - stateGross + flow.tax;
+            flow.budgetGap = need;
             if (!abroad && m >= p.access) takeLumpSum(s, p, price);
 
             if (need < 0) {
@@ -245,6 +254,16 @@ const FireModel = ((tax) => {
                 }
                 flow.shortfall = Math.max(0, need);
             }
+        }
+        const monthsSinceFirst = m + 1 - p.firstAnnualOverpayMonth;
+        if (working && !abroad && flow.shortfall <= penny && p.annualOverpayRate > 0
+            && monthsSinceFirst >= 0 && monthsSinceFirst % 12 === 0) {
+            // Apply after the regular payment and current month's cash saving.
+            const target = s.mortgage / price * p.annualOverpayRate / 100;
+            flow.annualOverpay = Math.min(s.cash, target);
+            flow.annualOverpayUnfunded = Math.max(0, target - flow.annualOverpay);
+            s.cash -= flow.annualOverpay;
+            s.mortgage = Math.max(0, s.mortgage - flow.annualOverpay * price);
         }
         s.isa *= growth;
         s.lisa *= growth;
@@ -379,8 +398,8 @@ const FireModel = ((tax) => {
                     mortgageOutstanding: atMove?.mortgageOutstanding };
             }
             const results = [evaluate('Entered return', p)];
-            if (p.mortgageRemaining > 0 && p.mortgageOverpay > 0) {
-                results.push(evaluate('No mortgage overpayment', { ...p, mortgageOverpay: 0 }));
+            if (p.mortgageRemaining > 0 && (p.mortgageOverpay > 0 || p.annualOverpayRate > 0)) {
+                results.push(evaluate('No mortgage overpayment', { ...p, mortgageOverpay: 0, annualOverpayRate: 0 }));
             }
             for (const percent of [3, 4, 6]) {
                 const realGrowth = 1 + percent / 100;
@@ -398,6 +417,78 @@ const FireModel = ((tax) => {
             }
             return results;
         });
+    }
+
+    // Compare exact dates, including plans that the earliest-date search cannot fund.
+    function decision(inputs, { ukAge, moveAge, lowerPrice, higherPrice, realReturn = null }) {
+        const base = prepare({ ...inputs, relocate: false });
+        const ukStart = decisionMonth(base, ukAge, 'UK part-time');
+        const moveStart = decisionMonth(base, moveAge, 'Romania move');
+        if (![lowerPrice, higherPrice].every(price => Number.isFinite(price) && price >= 0 && price <= 1e10)
+            || lowerPrice > higherPrice) {
+            throw new Error('Enter two positive or zero purchase prices, in ascending order.');
+        }
+        if (realReturn !== null && (!Number.isFinite(realReturn) || realReturn <= -100 || realReturn > 100)) {
+            throw new Error('Enter a real return above −100% and up to 100%.');
+        }
+
+        function evaluate(p, mode, start) {
+            if (realReturn !== null) {
+                const realGrowth = 1 + realReturn / 100;
+                p = { ...p, realGrowth, monthlyGrowth: realGrowth ** (1 / 12) };
+            }
+            const plan = { mode, start };
+            const run = simulate(p, plan, { record: true, buffered: true });
+            const transition = run.rows[start];
+            const first = run.rows[start + 1];
+            const last = run.rows.at(-1);
+            const purchase = first?.relocation;
+            const failure = !run.success && !run.mortgageOutstanding ? last : null;
+            const constraint = !transition ? null : mode === 'partTime' && p.partTimeNet <= 0 ? 'pay'
+                : canStart(p, mode, start, transition.mortgage) ? null
+                : mode === 'partTime' && start >= p.partTimeEnd ? 'partTimeEnd'
+                : mode === 'partTime' && p.partTimeAfterMortgage && transition.mortgage > penny ? 'mortgageGate'
+                : 'minimumYears';
+            const bridge = purchase?.shortfall <= penny ? bridgeBudget(p, plan, purchase) : null;
+            return {
+                p, plan, transition, constraint, bridge, success: run.success && constraint === null,
+                mortgageOutstanding: run.mortgageOutstanding, failure,
+                last, purchase, firstGap: first?.relocation?.shortfall > penny ? null : first?.budgetGap,
+                availableAfterPurchase: purchase && purchase.shortfall <= penny ? purchase.available + purchase.net : null,
+                annualOverpayment: run.rows.reduce((total, row) => total + (row.annualOverpay ?? 0), 0),
+                unfundedAnnualOverpayment: run.rows.reduce((total, row) => total + (row.annualOverpayUnfunded ?? 0), 0)
+            };
+        }
+        const uk = evaluate(base, 'partTime', ukStart);
+        const moves = [lowerPrice, higherPrice].map(replacementHome =>
+            evaluate(prepare({ ...inputs, relocate: true, moveAge, replacementHome }), 'full', moveStart));
+        return [uk, ...moves];
+    }
+
+    function bridgeBudget(p, plan, purchase) {
+        const duration = Math.min(p.access, p.duration);
+        if (duration <= plan.start) return null;
+        let low = 0;
+        // The first month's liquid assets and gross benefits bound any
+        // feasible level spending, even with later growth or income.
+        let high = Math.floor(Math.max(0, purchase.available + purchase.net)
+            + p.statePensionAmount / 12 + penny) + 1;
+        while (high - low > 1) {
+            const probe = Math.floor((low + high) / 2);
+            const funded = simulate({ ...p, duration, abroadRetirement: probe * 12, abroadHealthcare: 0 },
+                plan, { buffered: true }).success;
+            if (funded) low = probe;
+            else high = probe;
+        }
+        return { monthly: low, endAge: (p.age + duration) / 12 };
+    }
+
+    function decisionMonth(p, age, description) {
+        const m = months(age) - p.age;
+        if (!Number.isFinite(m) || m < 0 || m >= p.duration) {
+            throw new Error('Choose a ' + description + ' age between today and the planning horizon.');
+        }
+        return m;
     }
 
     function marketPaths(p, count, seed) {
@@ -453,14 +544,14 @@ const FireModel = ((tax) => {
         return plans;
     }
 
-    function stressTest(p, plan, { count = 500, seed = 123456789 } = {}) {
+    function stressTest(p, plan, { count = 500, seed = 123456789, buffered = false } = {}) {
         let successes = 0;
         const quantiles = Array.from({ length: p.duration + 1 }, () => []);
         const failures = { bridge: 0, later: 0, budget: 0, mortgage: 0 };
         const failureMonths = [];
         const paths = marketPaths(p, count, seed);
         for (let i = 0; i < count; i++) {
-            const path = simulate(p, plan, { record: true, growthAt: month => paths[i][month] });
+            const path = simulate(p, plan, { record: true, buffered, growthAt: month => paths[i][month] });
             if (path.success) successes++;
             else {
                 const m = path.failureMonth - 1;
@@ -497,7 +588,7 @@ const FireModel = ((tax) => {
         return { successes, count };
     }
 
-    return Object.freeze({ defaults, prepare, project, compare, partTimeEnabled, simulate, stressTest, findSuccessAges, confirmSuccess });
+    return Object.freeze({ defaults, prepare, project, compare, decision, partTimeEnabled, simulate, stressTest, findSuccessAges, confirmSuccess });
 })(typeof module === 'undefined' ? UKTax : require('./uk-tax.js'));
 
 if (typeof module !== 'undefined') module.exports = FireModel;
