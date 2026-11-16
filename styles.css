@@ -4,7 +4,7 @@ body { margin: 0; background: var(--page); color: var(--ink); font: 1rem/1.45 "I
 .page-header, main { max-width: 90rem; margin: auto; padding: 1.4rem clamp(1rem, 4vw, 3rem); }
 .page-header { padding-bottom: .25rem; }
 h1 { margin: 0; font-size: clamp(2rem, 6vw, 3.4rem); letter-spacing: -.045em; }
-h2, h3 { margin: 0; line-height: 1.25; }
+h2, h3, h4 { margin: 0; line-height: 1.25; }
 p { color: var(--muted); margin: .6rem 0; }
 main { display: grid; grid-template-columns: minmax(15rem, 21rem) minmax(0, 1fr); align-items: start; gap: 1.2rem; }
 form, .results { min-width: 0; }
@@ -319,6 +319,8 @@ dialog::backdrop { background: #070b14b5; }
 .decision-heading p { margin: .35rem 0 .65rem; }
 .decision-actions { display: flex; flex-wrap: wrap; gap: .35rem; }
 .decision-method { margin: .55rem 0 .7rem; font-size: .81rem; color: var(--muted); }
+.decision-assumptions { margin: 0 0 .75rem; font-size: .8rem; font-variant-numeric: tabular-nums; }
+.decision-assumptions:empty { display: none; }
 .decision-link {
     font: inherit;
     font-size: .83rem;
@@ -342,6 +344,9 @@ dialog::backdrop { background: #070b14b5; }
 .decision-controls select { width: 100%; margin-top: .22rem; }
 .decision-controls .switch { min-height: 2.25rem; border-radius: .5rem; }
 .decision-note { font-size: .81rem; }
+.decision-groups { display: grid; gap: .95rem; }
+.decision-group { min-width: 0; }
+.decision-group > h3 { margin: 0 0 .4rem; font-size: .93rem; }
 .decision-cards {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 12.2rem), 1fr));
@@ -358,7 +363,7 @@ dialog::backdrop { background: #070b14b5; }
     border-radius: .75rem;
 }
 .decision-card[data-location=uk] { --location: var(--blue); }
-.decision-card h3 { font-size: 1rem; color: var(--location); }
+.decision-card h4 { font-size: 1rem; color: var(--location); }
 .decision-card > p { margin: .32rem 0; font-size: .8rem; }
 .decision-card .decision-status { font-size: 1rem; color: var(--rose); font-weight: 700; }
 .decision-card .decision-status[data-funded=true] { color: var(--green); }
@@ -375,6 +380,7 @@ dialog::backdrop { background: #070b14b5; }
 }
 .minimum-pay dd { font-size: clamp(1.25rem, 2vw, 1.55rem); color: var(--location); }
 .minimum-pay small { display: block; font-size: .75rem; font-weight: 450; color: var(--muted); }
+.decision-card > button { margin-top: .55rem; }
 .section-links { display: flex; flex-wrap: wrap; gap: .3rem .8rem; margin: .65rem 0 .35rem; font-size: .86rem; }
 .section-links a { padding: .22rem 0; text-underline-offset: .18em; }
 #decision-title, #assumptions-title, #projection-title { scroll-margin-top: 1rem; }
@@ -382,3 +388,22 @@ dialog::backdrop { background: #070b14b5; }
     .decision-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 #comparison td:last-child { min-width: 16rem; white-space: normal; text-align: left; }
+.settings .optional-settings {
+    margin: .65rem 0 0;
+    padding: .55rem .65rem;
+    background: var(--chart-surface);
+    border: 1px solid var(--line);
+    box-shadow: none;
+}
+.budget-output {
+    display: block;
+    margin: .65rem 0 0;
+    padding: .5rem .6rem;
+    border-radius: .4rem;
+    background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+    font-size: .82rem;
+    font-variant-numeric: tabular-nums;
+}
+.budget-output:empty { display: none; }
+.plan-summary .cards { margin-top: .75rem; }
+.plan-summary .explanation { margin-bottom: 0; }

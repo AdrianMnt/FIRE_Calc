@@ -1,6 +1,8 @@
 'use strict';
 
-const { defaults, project, compare, decision, partTimeEnabled, simulate, stressTest, findSuccessAges, confirmSuccess } = FireModel;
+const { defaults, exampleDefaults, restoreSettings, project, compare, decision, partTimeEnabled,
+    simulate, projectionDetails, workingBudget, dependentSettings, settingIsActive,
+    stressTest, findSuccessAges, countSuccessSteps, confirmSuccess } = FireModel;
 const get = id => document.getElementById(id);
 const storageKey = 'pro-fire-simulator-state-v2';
 const pounds = new Intl.NumberFormat('en-GB', {
@@ -23,34 +25,39 @@ const groups = [
     ]],
     ['Home and mortgage', [
         ['mortgageRemaining', 'Mortgage balance (£)'],
-        ['mortgageBase', 'Regular monthly payment (£)', 'Fixed nominal payment including interest.'],
+        ['mortgageRate', 'Current mortgage rate (%)', 'Nominal annual rate divided by 12.'],
+        ['mortgageTerm', 'Years to mortgage maturity', '0 uses payments until payoff when you enter the payment yourself. A term pays any remainder at maturity.'],
+        ['estimateMortgagePayment', 'Calculate the mortgage payment', 'Uses the balance, rate and remaining term.'],
+        ['mortgageBase', 'Actual regular monthly payment (£)', 'Enter the scheduled payment before overpayments.'],
         ['mortgageOverpay', 'Monthly overpayment while working (£)'],
         ['annualOverpayRate', 'Annual mortgage overpayment (% of balance)', 'Paid from cash savings only, while working. Check your lender’s limit and allocation.'],
         ['firstAnnualOverpayMonth', 'Months to first annual overpayment', '1 applies after the first regular monthly payment. The annual payment repeats every 12 months.'],
-        ['mortgageRate', 'Current mortgage rate (%)', 'Nominal annual rate divided by 12.'],
         ['mortgageResetMonth', 'Months until the mortgage rate changes', '0 keeps the current rate for the whole term.'],
         ['mortgageResetRate', 'Mortgage rate after the change (%)'],
         ['mortgageResetPayment', 'New regular monthly payment (£)', 'Leave at 0 to recalculate over the remaining term. With no term, the old payment continues.'],
-        ['ukBudgetIncludesMortgage', 'UK spending budgets include the regular mortgage', 'Total spending stays at the entered budget after payoff. Voluntary overpayments are extra.'],
-        ['mortgageTerm', 'Years to mortgage maturity', '0 uses payments until payoff. A term pays any remainder at maturity.'],
-        ['redirectMortgage', 'Invest freed mortgage payments while working']
+        ['redirectMortgage', 'Direct freed mortgage payments to the ISA', 'Uses spare working income after the stated budget and contributions.']
     ]],
     ['Working budget', [
         ['netIncome', 'Monthly take-home income (£)', 'After payroll pension contributions. Include any net pension receipts already in the budget.'],
         ['livingExpenses', 'Monthly household spending (£)'],
-        ['monthlyCash', 'Monthly cash saving (£)', 'Use for cash you plan to set aside, including for a move.'],
-        ['monthlyIsa', 'Monthly ISA contribution (£)'],
+        ['ukBudgetIncludesMortgage', 'UK spending budgets include the regular mortgage', 'Applies to working, part-time and retirement. Total spending stays at the entered budget after payoff. Voluntary overpayments are extra.'],
+        ['investUkSurplus', 'Invest the remaining working surplus', 'After any cash, ISA and personal pension amounts you choose below. The remainder goes to a general investment account.'],
+        ['monthlyCash', 'Monthly cash set-aside (£)', 'Optional allocation for an emergency fund, move or annual mortgage overpayment.'],
+        ['monthlyIsa', 'Monthly amount directed to the ISA (£)', 'Optional allocation. Include it within your available savings.'],
         ['workplacePension', 'Monthly gross workplace pension contribution (£)', 'Include employee and employer contributions already accounted for in payroll.'],
         ['monthlySipp', 'Monthly SIPP cost from take-home pay (£)'],
         ['sippGrossFactor', 'SIPP gross-up multiplier', 'Use 1.25 for standard relief at source, or 1 when no relief is added.']
     ]],
     ['Retirement and pensions', [
-        ['targetIncome', 'Annual UK retirement spending (£)'],
+        ['linkUkRetirementBudget', 'Use the same spending in UK retirement as while working'],
+        ['targetIncome', 'UK retirement spending (£)'],
+        ['retirementBudgetPeriod', 'Retirement spending frequency'],
         ['minimumRetiredYears', 'Minimum years of full retirement', '0 uses the planning horizon alone. Enter 20, for example, to require 20 years with no work income before the horizon.'],
         ['overFundBuffer', 'Extra spending for eligibility test (%)'],
         ['pensionAccessAge', 'Private pension access age', 'Check your scheme rules.'],
+        ['statePensionAmount', 'Gross State Pension forecast (£)', 'Use the combined amount for the household. 0 assumes no income.'],
+        ['statePensionPeriod', 'State Pension forecast frequency'],
         ['statePensionAge', 'State Pension start age'],
-        ['statePensionAmount', 'Annual gross State Pension (£)', 'Enter the annual amount. Multiply a weekly forecast by 52 or a monthly amount by 12. 0 assumes no income.'],
         ['region', 'Income Tax region'],
         ['splitHouseholdTax', 'Estimate UK tax for two people with equal taxable income', 'Combined pay, State Pension and pension withdrawals are split equally. Enter the combined remaining lump sum allowance.'],
         ['pensionTaxExtra', 'Extra UK private pension tax (percentage points)', 'Optional sensitivity applied to taxable private pension.'],
@@ -64,6 +71,7 @@ const groups = [
         ['useCoastNet', 'Use a different take-home pay during Coast FIRE'],
         ['coastNet', 'Coast monthly take-home pay (£)', 'Used only when the option above is checked.'],
         ['partTimeNet', 'UK household take-home while part-time (£/month)', 'Enter pay after Income Tax, National Insurance and payroll deductions. 0 disables part-time FIRE.'],
+        ['estimatePartTimeGross', 'Estimate taxable pay from take-home', 'Uses standard employee Income Tax and National Insurance. Use your own figure for unequal pay, self-employment or other deductions.'],
         ['partTimeGross', 'UK household taxable pay while part-time (£/month)', 'Enter before Income Tax and after any salary sacrifice.'],
         ['partTimeEndAge', 'Age part-time work ends'],
         ['partTimePension', 'Monthly gross workplace pension while part-time (£)', 'Enter the amount credited to the pension. Part-time take-home should already reflect any employee contribution.'],
@@ -79,13 +87,18 @@ const groups = [
         ['saleCosts', 'UK sale and mortgage exit costs (£)', 'Include agent, legal and early repayment charges.'],
         ['purchaseCosts', 'Destination purchase costs (£ equivalent)'],
         ['movingCosts', 'Moving, FX and setup costs (£ equivalent)'],
-        ['abroadLiving', 'Monthly work and Coast spending after the move (£ equivalent)'],
-        ['abroadRetirement', 'Annual part-time and retirement spending after the move (£ equivalent)'],
+        ['abroadLiving', 'Monthly living costs after the move (£ equivalent)'],
+        ['linkAbroadRetirementBudget', 'Use the same living costs in retirement after the move'],
+        ['abroadRetirement', 'Retirement spending after the move (£ equivalent)'],
+        ['abroadRetirementBudgetPeriod', 'Destination retirement spending frequency'],
         ['abroadHealthcare', 'Additional monthly healthcare after the move (£ equivalent)', 'Added in every phase. Include healthcare here or in base spending.'],
         ['abroadNetIncome', 'Full-time monthly take-home after the move (£ equivalent)'],
+        ['linkAbroadCoastPay', 'Use the same destination pay while coasting'],
         ['abroadCoastNet', 'Coast monthly take-home after the move (£ equivalent)'],
         ['abroadPartTimeNet', 'Part-time monthly take-home after the move (£ equivalent)'],
-        ['abroadInvest', 'Monthly accessible investment while working after the move (£ equivalent)', 'Deposited outside the UK ISA. Use returns net of investment taxes.'],
+        ['useFixedAbroadInvest', 'Set a fixed monthly investment after moving', 'By default, the calculator uses take-home pay minus living costs and healthcare.'],
+        ['abroadInvest', 'Fixed monthly investment after moving (£ equivalent)', 'Use this to model investing only part of the available budget.'],
+        ['saveAbroadSurplusAsCash', 'Keep the calculated surplus in cash', 'The default invests it outside the UK ISA.'],
         ['abroadPension', 'Monthly gross pension contribution while working after the move (£ equivalent)', 'Uses the shared pension pot. Take-home pay should already reflect employee contributions.'],
         ['abroadPensionTax', 'Effective tax on gross private pension after the move (%)', 'Editable assumption for all private withdrawals after the move.'],
         ['abroadStateTax', 'Effective tax on gross State Pension after the move (%)', 'Editable planning assumption.']
@@ -110,26 +123,49 @@ function element(tag, value) {
 function savedInputs() {
     try {
         return JSON.parse(localStorage.getItem(storageKey)
-            || localStorage.getItem('pro-fire-simulator-state-v1')) || {};
+            || localStorage.getItem('pro-fire-simulator-state-v1'));
     } catch {
-        return {};
+        return null;
     }
 }
 
-const saved = savedInputs();
+const saved = restoreSettings(savedInputs());
 const fields = new Map();
+const optionalAmounts = new Set([
+    'mortgageOverpay', 'annualOverpayRate', 'mortgageResetMonth', 'mortgageResetPayment',
+    'monthlyCash', 'monthlyIsa', 'workplacePension', 'monthlySipp', 'statePensionAmount',
+    'partTimeNet', 'partTimePension', 'abroadHealthcare', 'abroadPension'
+]);
+const periods = [['monthly', 'Monthly'], ['annual', 'Annual'], ['weekly', 'Weekly']];
+const selectOptions = {
+    region: [['rest', 'England, Wales or Northern Ireland'], ['scotland', 'Scotland']],
+    statePensionPeriod: periods,
+    retirementBudgetPeriod: periods.slice(0, 2),
+    abroadRetirementBudgetPeriod: periods.slice(0, 2)
+};
+const destinationWorkKeys = new Set([
+    'abroadNetIncome', 'linkAbroadCoastPay', 'abroadCoastNet', 'abroadPartTimeNet',
+    'useFixedAbroadInvest', 'abroadInvest', 'saveAbroadSurplusAsCash', 'abroadPension'
+]);
 for (const [title, specs] of groups) {
     const section = element('details');
     section.open = title === groups[0][0];
     section.dataset.settings = title;
     section.append(element('summary', title));
+    let employment;
     for (const [key, name, help] of specs) {
+        if (destinationWorkKeys.has(key) && !employment) {
+            employment = element('details');
+            employment.className = 'optional-settings';
+            employment.append(element('summary', 'Employment and savings after moving'));
+            section.append(employment);
+        }
         const label = element('label');
         let input;
         const value = saved[key] ?? defaults[key];
-        if (key === 'region') {
+        if (selectOptions[key]) {
             input = element('select');
-            for (const [value, text] of [['rest', 'England, Wales or Northern Ireland'], ['scotland', 'Scotland']]) {
+            for (const [value, text] of selectOptions[key]) {
                 const option = element('option', text);
                 option.value = value;
                 input.append(option);
@@ -146,7 +182,7 @@ for (const [title, specs] of groups) {
                 input.type = typeof defaults[key] === 'number' ? 'number' : 'text';
                 if (input.type === 'number') {
                     input.step = 'any';
-                    input.required = true;
+                    input.required = !optionalAmounts.has(key);
                 }
                 input.value = value;
                 label.append(document.createTextNode(name), input);
@@ -159,10 +195,38 @@ for (const [title, specs] of groups) {
             input.setAttribute('aria-describedby', note.id);
             label.append(note);
         }
-        section.append(label);
+        (destinationWorkKeys.has(key) ? employment : section).append(label);
         fields.set(key, input);
     }
+    if (employment) employment.append(budgetOutput('destination-savings'));
+    if (title === 'Working budget') section.append(budgetOutput('uk-savings'));
+    if (title === 'Retirement and pensions') section.append(budgetOutput('uk-retirement-budget'));
+    if (title === 'Relocation') section.append(budgetOutput('destination-retirement-budget'));
+    if (title === 'Home and mortgage') section.append(budgetOutput('calculated-mortgage'));
+    if (title === 'Coast and Barista FIRE') section.append(budgetOutput('calculated-taxable-pay'));
+    if (title === 'Returns and stress test') section.append(budgetOutput('calculated-real-return'));
     get('inputs').append(section);
+}
+
+function budgetOutput(id) {
+    const output = element('output');
+    output.id = id;
+    output.className = 'budget-output';
+    return output;
+}
+
+function fieldValue(input) {
+    if (input.type === 'checkbox') return input.checked;
+    if (input.type !== 'number') return input.value;
+    return input.value === '' && optionalAmounts.has(input.id) ? 0 : input.valueAsNumber;
+}
+
+function refreshDependentInputs() {
+    for (const key of Object.keys(dependentSettings)) {
+        const input = fields.get(key);
+        input.disabled = !settingIsActive(key, driver => fieldValue(fields.get(driver)));
+        input.labels[0].hidden = input.disabled;
+    }
 }
 
 const mode = get('mode');
@@ -279,10 +343,10 @@ function explainScenario(key, result, inputs) {
         if (p.minimumRetirement && p.duration - Math.max(0, fullRetirementStart) < p.minimumRetirement) {
             return ['The minimum full-retirement period does not fit before the planning horizon at these ages.'];
         }
-        if (key === 'partTime' && !partTimeEnabled(p)) return ['Enter your monthly part-time take-home and taxable pay to test a reduced-hours plan.'];
+        if (key === 'partTime' && !partTimeEnabled(p)) return ['Enter monthly part-time take-home to test a reduced-hours plan.'];
         const coastPay = p.useCoastNet ? p.coastNet : p.netIncome;
         if (key === 'coast' && !p.relocate && coastPay < p.livingExpenses) return [
-            `Coast take-home pay of ${gbp(coastPay)} falls short of ${gbp(p.livingExpenses)} in monthly working expenses before any mortgage payment. Coasting requires pay to cover those bills so the investments can stay untouched.`
+            `Coast take-home pay of ${gbp(coastPay)} falls short of ${gbp(p.livingExpenses)} in the monthly working budget. Coasting requires pay to cover those bills so the investments can stay untouched.`
         ];
         return [mortgageRequired
             ? 'No mortgage-free start met the cash-flow test before this scenario’s end age. The model keeps the full-time budget and any mortgage overpayments until payoff.'
@@ -295,18 +359,18 @@ function explainScenario(key, result, inputs) {
     const first = rows[plan.start + 1];
     const pensionAge = Math.max(opening.age, p.pensionAccessAge);
     const details = [
-        `At age ${age(opening.age)}, you have ${gbp(opening.accessible)} in accessible assets and ${gbp(opening.pension)} in your private pension. The eligibility test uses the local retirement budget, any mortgage payments and your spending buffer through age ${age(p.horizonAge)}.`
+        `At age ${age(opening.age)}, you have ${gbp(opening.accessible)} in accessible assets and ${gbp(opening.pension)} in your private pension. The eligibility test accounts for your budget, mortgage and spending buffer through age ${age(p.horizonAge)}.`
     ];
     if (key === 'coast') {
         const retirement = rows[p.coastEnd];
         const pay = first.abroad ? p.abroadCoastNet : p.useCoastNet ? p.coastNet : p.netIncome;
         const costs = first.abroad ? p.abroadLiving + p.abroadHealthcare : p.livingExpenses;
-        details.push(`You keep working until age ${age(p.coastAge)}. In the first Coast month, ${gbp(pay)} take-home covers a ${gbp(costs)} spending budget and a ${gbp(first.mortgageCost)} mortgage payment. ISA and pension contributions and mortgage overpayments stop. The model leaves any spare pay out of the portfolio.`);
+        details.push(`You keep working until age ${age(p.coastAge)}. In the first Coast month, ${gbp(pay)} take-home covers a ${gbp(costs)} spending budget. The mortgage payment is ${gbp(first.mortgageCost)}${p.ukBudgetIncludesMortgage && !first.abroad ? ' and is included in the budget' : ''}. ISA and pension contributions and mortgage overpayments stop. The model leaves any spare pay out of the portfolio.`);
         details.push(`By age ${age(p.coastAge)}, the model projects ${gbp(retirement.accessible)} in accessible assets and ${gbp(retirement.pension)} in your private pension, using a steady ${((p.realGrowth - 1) * 100).toFixed(2)}% real annual return after fees.`);
     } else if (key === 'partTime') {
         const end = rows[p.partTimeEnd];
         details.push(`You switch to ${gbp(first.abroad ? p.abroadPartTimeNet : p.partTimeNet)} monthly take-home pay at the start and work until age ${age(p.partTimeEndAge)}. Your first month draws ${gbp(first.drawn)} from the portfolio before any tax on private pension withdrawals. Full-time contributions and mortgage overpayments stop at the switch.`);
-        if (end) details.push(`When the part-time pay ends, the baseline projects ${gbp(end.accessible)} in cash and ISA and ${gbp(end.pension)} in your pension. The portfolio and any pension income cover the bills from then on.`);
+        if (end) details.push(`When the part-time pay ends, the baseline projects ${gbp(end.accessible)} in accessible assets and ${gbp(end.pension)} in your pension. The portfolio and any pension income cover the bills from then on.`);
     } else {
         details.push(`Work income and new contributions stop immediately at this age. The first retired month uses ${gbp(first.drawn)} in gross portfolio withdrawals. Private pension is available at age ${age(pensionAge)}. The Lifetime ISA can fund spending from age 60.`);
     }
@@ -338,8 +402,8 @@ function renderSummary(cards, result, inputs, mortgageFree) {
             equity: `${gbp(p.homeValue)} home value less ${gbp(opening.mortgage)} mortgage. A sale releases equity after debt and sale costs.`,
             portfolio: `${gbp(opening.liquid)} cash and accessible investments plus ${gbp(opening.lisa)} Lifetime ISA and ${gbp(opening.pension)} private pensions.`,
             accessible: 'Cash and unrestricted investments can fund spending at any age. The Lifetime ISA joins them at age 60. Private pensions are tracked separately.',
-            work: work.abroad ? 'The first month uses post-move take-home pay and spending. See the comparison for purchase funding.'
-                : p.ukBudgetIncludesMortgage ? 'The UK working budget includes the regular mortgage. Voluntary overpayments and savings use remaining take-home pay.' : `${gbp(p.netIncome)} take-home, less ${gbp(p.livingExpenses)} in the working budget, ${gbp(work.mortgageCost)} in mortgage payments, ${gbp(p.monthlyIsa)} ISA savings, ${gbp(p.monthlyCash)} cash savings and ${gbp(p.monthlySipp)} personal SIPP costs. The figure is after any automatic mortgage-payment redirection. Workplace pension contributions are already accounted for in payroll.`,
+            work: work.availableToSave === undefined ? 'The first month stops at the relocation purchase shortfall.'
+                : `${gbp(work.availableToSave)} is available after living costs, mortgage payments and any personal pension contributions. The projection adds ${gbp(work.isaAdded)} to the ISA, ${gbp(work.cashSaved)} to cash and ${gbp(work.investedOutsideIsa)} to other investments.`,
             mortgage: mortgageFree
                 ? `${scenarioNames[mode.value]} clears the mortgage ${mortgageFree.month === 0 ? 'today' : 'at age ' + age(mortgageFree.age)}. The mortgage chart shows this payoff month. The model stops overpayments when you leave full-time work. A specified maturity collects any remaining balance in its final month.`
                 : 'The selected projection ends before the mortgage is cleared. Check the budget, payments and term.',
@@ -373,6 +437,7 @@ let previousRisk;
 let latestInputs;
 let latestPrepared;
 let targetPreview;
+let fixedPreview = false;
 
 function riskKey(inputs) {
     const { monteCarlo, ...assumptions } = inputs;
@@ -420,7 +485,7 @@ function updateRisk(p, inputs) {
             const card = element('div');
             card.dataset.kind = name;
             const value = plan ? 'Age ' + age((p.age + plan.start) / 12)
-                : name === 'partTime' && p.partTimeNet <= 0 ? 'Off' : 'No qualifying age';
+                : name === 'partTime' && !partTimeEnabled(p) ? 'Off' : 'No qualifying age';
             const details = element('dd', value);
             card.append(element('dt', scenarioNames[name]), details);
             if (plan) addRiskCardAction(details, plan, key, checks[name], target);
@@ -537,15 +602,73 @@ function renderFailureBreakdown(stress, p) {
     }));
 }
 
+function renderSavingsAssumptions(p, work) {
+    const uk = get('uk-savings');
+    const destination = get('destination-savings');
+    const mortgage = get('calculated-mortgage');
+    get('uk-retirement-budget').textContent = 'UK retirement budget ' + gbp(p.targetIncome / 12) + ' per month '
+        + (p.ukBudgetIncludesMortgage ? 'including the mortgage.' : 'plus any mortgage payment.');
+    if (p.statePensionAmount > 0) get('uk-retirement-budget').append(' Entered State Pension forecast '
+        + gbp(p.statePensionAmount / 12) + ' gross per month.');
+    get('destination-retirement-budget').textContent = 'Retirement after moving uses '
+        + gbp(p.abroadRetirement / 12 + p.abroadHealthcare) + ' per month including healthcare.';
+    get('calculated-real-return').textContent = 'Real annual investment return after fees and inflation '
+        + ((p.realGrowth - 1) * 100).toFixed(2) + '%.';
+    get('calculated-taxable-pay').textContent = p.estimatePartTimeGross && p.partTimeNet > 0
+        ? 'Estimated monthly taxable pay ' + gbp(p.partTimeGross) + '. Used for tax on pension income during part-time work.' : '';
+    mortgage.textContent = p.mortgageRemaining === 0 ? 'No outstanding mortgage.'
+        : (p.estimateMortgagePayment ? 'Estimated scheduled payment ' : 'Entered scheduled payment ')
+            + gbp(p.mortgageBase) + ' per month before overpayments.';
+    uk.textContent = work.shortfall > 0.005 ? 'The first working month is short by ' + gbp(work.shortfall)
+        + '. Take-home required for the entered budget and allocations is ' + gbp(p.netIncome + work.shortfall) + '.'
+        : gbp(work.availableToSave) + ' available in the first working month. '
+            + gbp(work.isaAdded) + ' to the ISA, ' + gbp(work.cashSaved) + ' to cash and '
+            + gbp(work.investedOutsideIsa) + ' to other investments.';
+    if (work.surplus > 0.005) uk.append(' ' + gbp(work.surplus) + ' stays outside the projection.');
+    const budget = workingBudget(p, { abroad: true, working: true });
+    destination.textContent = budget.remainder < -0.005
+        ? 'The destination working budget is short by ' + gbp(-budget.remainder) + ' per month.'
+        : p.useFixedAbroadInvest
+            ? gbp(budget.planned) + ' per month invested from ' + gbp(budget.available) + ' available.'
+            : gbp(budget.automatic) + ' per month from take-home pay after living costs and healthcare. '
+                + (p.saveAbroadSurplusAsCash ? 'Added to cash.' : 'Invested outside the ISA.');
+}
+
 let previousDecision;
-function decisionCard(result, runStress) {
+let comparisonStress;
+
+function runComparisonStress(tasks) {
+    if (!tasks.length) return;
+    const run = { index: 0 };
+    comparisonStress = run;
+    function checkSome() {
+        if (comparisonStress !== run) return;
+        const deadline = performance.now() + 16;
+        do {
+            const task = tasks[run.index];
+            const step = task.steps.next();
+            if (step.done) {
+                task.output.textContent = step.value.successes + ' / ' + step.value.count;
+                run.index++;
+                if (run.index === tasks.length) {
+                    comparisonStress = null;
+                    return;
+                }
+            }
+        } while (performance.now() < deadline);
+        setTimeout(checkSome, 0);
+    }
+    setTimeout(checkSome, 0);
+}
+
+function decisionCard(result, tasks) {
     const { p, transition, purchase, failure, constraint } = result;
     const section = element('section');
     section.className = 'decision-card';
     const uk = result.plan.mode === 'partTime';
     section.dataset.location = uk ? 'uk' : 'relocate';
     const startAge = age((p.age + result.plan.start) / 12);
-    const label = uk ? 'UK · Part-time' : 'Relocate · ' + gbp(p.replacementHome);
+    const label = uk ? 'Part-time at ' + startAge : gbp(p.replacementHome) + ' home';
     const constraintLabels = {
         pay: 'Enter part-time take-home pay',
         partTimeEnd: 'Part-time work already ends by this age',
@@ -563,8 +686,8 @@ function decisionCard(result, runStress) {
     const headline = element('p', status);
     headline.className = 'decision-status';
     headline.dataset.funded = String(result.success);
-    const timing = uk ? 'Age ' + startAge + ' to ' + age(p.partTimeEndAge) : 'Move at age ' + startAge;
-    section.append(element('h3', label), element('p', timing), headline);
+    const timing = uk ? 'Work until age ' + age(p.partTimeEndAge) : 'Move at age ' + startAge;
+    section.append(element('h4', label), element('p', timing), headline);
 
     const figures = [];
     if (transition) {
@@ -588,20 +711,28 @@ function decisionCard(result, runStress) {
     if (result.bridge) figures.push(['Monthly budget through age ' + age(result.bridge.endAge),
         gbp(result.bridge.monthly)]);
     if (failure) figures.push(['First unfunded amount', gbp(failure.shortfall)]);
-    if (runStress && !constraint) {
-        const stress = confirmSuccess(p, result.plan, { buffered: true });
-        figures.push(['Funded at entered pay and spending', stress.successes + ' / ' + stress.count]);
+    if (decisionFields.stress.checked && !constraint) {
+        const output = element('span', 'Checking market paths…');
+        tasks.push({ output, steps: countSuccessSteps(p, result.plan, { buffered: true }) });
+        figures.push(['Funded at entered pay and spending', output]);
     }
     const list = element('dl');
     for (const [name, value, kind, note] of figures) {
         const row = element('div');
         if (kind) row.className = kind;
-        const detail = element('dd', value);
+        const detail = element('dd');
+        detail.append(value);
         if (note) detail.append(element('small', note));
         row.append(element('dt', name), detail);
         list.append(row);
     }
     section.append(list);
+    const preview = element('button', 'View projection');
+    preview.type = 'button';
+    preview.className = 'decision-link';
+    preview.setAttribute('aria-label', 'View projection for ' + label + ' at age ' + startAge);
+    preview.addEventListener('click', () => showFixedProjection(result, label, startAge, status));
+    section.append(preview);
     return section;
 }
 
@@ -609,6 +740,7 @@ function renderDecision(inputs, p) {
     const error = get('decision-error');
     const cards = get('decision-cards');
     const mortgage = get('decision-mortgage');
+    const basis = get('decision-assumptions');
     try {
         if (Object.values(decisionFields).some(input => input.validity.badInput)) {
             throw new Error('Enter a valid number for each age and price.');
@@ -627,8 +759,24 @@ function renderDecision(inputs, p) {
         };
         const key = JSON.stringify([inputs, options, decisionFields.stress.checked]);
         if (previousDecision === key && error.hidden) return;
+        comparisonStress = null;
+        const tasks = [];
         const results = decision(inputs, options);
-        cards.replaceChildren(...results.map(result => decisionCard(result, decisionFields.stress.checked)));
+        const realRate = (results[0].p.realGrowth - 1) * 100;
+        basis.textContent = realRate.toFixed(2) + '% annual real return · Plan through age ' + age(p.horizonAge);
+        const groups = [
+            ['Stay in the UK', results.filter(result => result.plan.mode === 'partTime')],
+            ['Relocate and retire', results.filter(result => result.plan.mode === 'full')]
+        ];
+        cards.replaceChildren(...groups.map(([title, plans]) => {
+            const group = element('section');
+            group.className = 'decision-group';
+            const list = element('div');
+            list.className = 'decision-cards';
+            list.append(...plans.map(result => decisionCard(result, tasks)));
+            group.append(element('h3', title), list);
+            return group;
+        }));
         const move = results.find(result => result.plan.mode === 'full');
         mortgage.hidden = move.annualOverpayment === 0 && move.unfundedAnnualOverpayment === 0;
         mortgage.textContent = 'Before the move, cash savings fund ' + gbp(move.annualOverpayment)
@@ -636,10 +784,13 @@ function renderDecision(inputs, p) {
             + gbp(move.unfundedAnnualOverpayment) + '.';
         error.hidden = true;
         previousDecision = key;
+        runComparisonStress(tasks);
     } catch (problem) {
+        comparisonStress = null;
         error.textContent = problem.message;
         error.hidden = false;
         mortgage.hidden = true;
+        basis.textContent = '';
         cards.replaceChildren();
     }
 }
@@ -669,20 +820,74 @@ function renderComparison(inputs, p) {
     }));
 }
 
+function findMortgageFree(rows) {
+    return rows.find(row => row.mortgage <= 0.005 && !(row.shortfall > 0.005));
+}
+
+function renderProjection(result, { description = '', basis = '', buffered = false, runStress = false } = {}) {
+    const { p, selected, baseline } = result;
+    const fundedRows = baseline.rows.filter(row => !(row.shortfall > 0.005));
+    const mortgageFree = findMortgageFree(fundedRows);
+    const opening = selected && fundedRows[selected.start];
+    get('projection-basis').hidden = !basis;
+    get('projection-basis-text').textContent = basis;
+    mode.disabled = fixedPreview;
+    if (!description) {
+        description = opening
+            ? `${scenarioNames[selected.mode]} starts at age ${age(opening.age)} with ${gbp(opening.portfolio)} of investable assets.`
+            : selected ? 'The steady-return projection ends before the chosen start.'
+                : 'This scenario has no eligible start. The chart shows the working projection.';
+        if (!baseline.success) description += baseline.mortgageOutstanding
+            ? ' Mortgage debt remains at the horizon.'
+            : ` The budget runs short by ${gbp(baseline.rows.at(-1).shortfall)} in the month ending at age ${age(baseline.rows.at(-1).age)}.`;
+    }
+    get('plan-details').textContent = description;
+    const stress = runStress && selected ? stressTest(p, selected, { buffered }) : null;
+    get('stress-result').textContent = stress
+        ? `${stress.successes} of ${stress.count} simulated paths fund the plan and clear the mortgage at this start age. In the Stress test view, the shaded range shows the middle 80% of investable assets among still-funded paths.`
+        : runStress ? 'Stress testing needs an eligible start for the selected scenario.' : '';
+    renderFailureBreakdown(stress, p);
+    renderPlanEvents(result, mortgageFree);
+    renderTimeline(result);
+    renderMilestones(result);
+    chart.update({
+        rows: fundedRows, stress, mortgageFree: fundedRows[0].mortgage > 0.005 ? mortgageFree : null,
+        start: opening ? selected.start : undefined
+    });
+}
+
+function showFixedProjection(result, label, startAge, status) {
+    fixedPreview = true;
+    targetPreview = null;
+    const projection = projectionDetails(result.p, result.plan, result.run);
+    renderProjection(projection, {
+        basis: 'Selected comparison · ' + label,
+        description: 'Age ' + startAge + ' switch. ' + status + '. This projection uses the comparison return and spending buffer.',
+        buffered: true,
+        runStress: decisionFields.stress.checked && !result.constraint
+    });
+    chart.setView('balances');
+    get('show-baseline').focus();
+    get('projection-basis').scrollIntoView({ block: 'nearest' });
+}
+
 function update() {
     try {
+        refreshDependentInputs();
         const inputs = {};
         for (const [key, input] of fields) {
+            const number = input.type === 'number';
             if (!input.validity.valid) throw new Error(`Check the value for ${input.labels[0].firstChild.textContent}.`);
-            inputs[key] = input.type === 'checkbox' ? input.checked
-                : input.type === 'number' ? input.valueAsNumber : input.value;
+            const value = fieldValue(input);
+            inputs[key] = number && input.disabled && !Number.isFinite(value) ? defaults[key] : value;
         }
         if (!riskEnabled.checked || !riskTarget.validity.valid || targetPreview?.key !== riskKey(inputs)
             || targetPreview?.plan.mode !== mode.value) targetPreview = null;
         const result = project(inputs, mode.value, targetPreview?.plan.start);
-        const { p, plans, selected, baseline, work } = result;
+        const { p, plans, baseline, work } = result;
+        fixedPreview = false;
         const opening = baseline.rows[0];
-        const mortgageFree = baseline.rows.find(row => row.mortgage <= 0.005 && !(row.shortfall > 0.005));
+        const mortgageFree = findMortgageFree(baseline.rows);
         const planAge = plan => plan ? `Age ${age((p.age + plan.start) / 12)}` : 'Outside plan';
         const basis = targetPreview ? ' · baseline' : '';
         const cards = [
@@ -697,41 +902,23 @@ function update() {
             ['mortgage', 'Mortgage-free in projection', mortgageFree ? `Age ${age(mortgageFree.age)}` : 'Outside plan'],
             ['returns', 'Annual real return after fees', `${((p.realGrowth - 1) * 100).toFixed(2)}%`]
         ];
+        renderSavingsAssumptions(p, result.ukWork);
         renderDecision(inputs, p);
         renderSummary(cards, result, inputs, mortgageFree);
         const payWarning = get('pay-warning');
-        payWarning.hidden = !(p.partTimeNet > 0 && p.partTimeNet === p.partTimeGross
+        payWarning.hidden = p.estimatePartTimeGross || !(p.partTimeNet > 0 && p.partTimeNet === p.partTimeGross
             && p.partTimeGross * 12 > 12570);
         payWarning.textContent = 'Part-time take-home and taxable pay are the same. For ordinary UK employment above the personal allowance, deductions generally reduce take-home pay. Check these figures against an expected payslip.';
         const isaWarning = get('isa-warning');
         isaWarning.hidden = result.maxIsaDeposits <= 20000.005;
         get('isa-warning-detail').textContent = 'This projection includes up to ' + gbp(result.maxIsaDeposits)
             + ' of ISA deposits in a 12-month period in today’s pounds. The 2026/27 allowance is £20,000 per tax year. Check planned contributions and any mortgage-payment redirection.';
-        get('projection-basis').hidden = !targetPreview;
-        get('projection-basis-text').textContent = targetPreview
-            ? 'Projection at the ' + targetPreview.target + '% search age' : '';
-        let description = selected
-            ? `${scenarioNames[selected.mode]} starts at age ${age(baseline.rows[selected.start].age)} with ${gbp(baseline.rows[selected.start].portfolio)} of investable assets.`
-            : 'This scenario has no eligible start. The chart shows the working projection.';
-        if (!baseline.success) description += baseline.mortgageOutstanding
-            ? ' Mortgage debt remains at the horizon.'
-            : ` The budget runs short by ${gbp(baseline.rows.at(-1).shortfall)} in the month ending at age ${age(baseline.rows.at(-1).age)}.`;
-        get('plan-details').textContent = description;
-        const stress = (p.monteCarlo || targetPreview) && selected ? stressTest(p, selected) : null;
-        get('stress-result').textContent = stress
-            ? `${stress.successes} of ${stress.count} simulated paths fund the plan and clear the mortgage at this start age. In the Stress test view, the shaded range shows the middle 80% of investable asset balances among paths still funded at each age.`
-            : p.monteCarlo ? 'Stress testing needs an eligible start for the selected scenario.' : '';
-        renderFailureBreakdown(stress, p);
-        renderPlanEvents(result, mortgageFree);
-        renderTimeline(result);
-        renderMilestones(result);
         if (get('comparison-panel').open) renderComparison(inputs, p);
         get('report').hidden = false;
         get('error').hidden = true;
-        chart.update({
-            rows: baseline.rows.filter(row => !(row.shortfall > 0.005)),
-            stress, mortgageFree: opening.mortgage > 0.005 ? mortgageFree : null,
-            start: selected?.start
+        renderProjection(result, {
+            basis: targetPreview ? 'Projection at the ' + targetPreview.target + '% search age' : '',
+            runStress: p.monteCarlo || !!targetPreview
         });
         latestInputs = inputs;
         latestPrepared = p;
@@ -740,6 +927,10 @@ function update() {
     } catch (error) {
         latestPrepared = null;
         currentRiskSearch = null;
+        comparisonStress = null;
+        previousDecision = null;
+        for (const id of ['uk-savings', 'destination-savings', 'calculated-mortgage', 'calculated-taxable-pay', 'calculated-real-return',
+            'uk-retirement-budget', 'destination-retirement-budget']) get(id).textContent = '';
         get('report').hidden = true;
         get('error').textContent = error.message;
         get('error').hidden = false;
@@ -763,6 +954,10 @@ get('decision-form').addEventListener('input', () => {
     clearTimeout(decisionTimer);
     decisionTimer = setTimeout(() => {
         if (!latestPrepared) return;
+        if (fixedPreview) {
+            update();
+            return;
+        }
         renderDecision(latestInputs, latestPrepared);
         saveInputs(latestInputs);
     }, 180);
@@ -776,8 +971,8 @@ get('load-example').addEventListener('click', () => {
 exampleDialog.addEventListener('close', () => {
     if (exampleDialog.returnValue !== 'load') return;
     for (const [key, input] of fields) {
-        if (input.type === 'checkbox') input.checked = defaults[key];
-        else input.value = defaults[key];
+        if (input.type === 'checkbox') input.checked = exampleDefaults[key];
+        else input.value = exampleDefaults[key];
     }
     resetDecision();
     mode.value = 'full';
@@ -797,6 +992,7 @@ get('show-baseline').addEventListener('click', () => {
 let timer;
 get('inputs').addEventListener('submit', event => event.preventDefault());
 get('inputs').addEventListener('input', () => {
+    refreshDependentInputs();
     clearTimeout(timer);
     timer = setTimeout(update, 180);
 });

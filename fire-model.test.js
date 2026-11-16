@@ -2,8 +2,8 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { incomeTax } = require('./uk-tax.js');
-const { prepare, project, compare, decision, simulate, stressTest, findSuccessAges, confirmSuccess } = require('./fire-model.js');
+const { incomeTax, employeeNationalInsurance, estimateGrossMonthly } = require('./uk-tax.js');
+const { exampleDefaults, restoreSettings, prepare, project, compare, decision, simulate, stressTest, countSuccessSteps, findSuccessAges, confirmSuccess } = require('./fire-model.js');
 
 const neutral = {
     currentAge: 50, horizonAge: 60, startingIsa: 0, startingCash: 0, startingPension: 0,
@@ -24,6 +24,131 @@ const moveFixture = {
 function close(actual, expected, tolerance = 0.01) {
     assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} differs from ${expected}`);
 }
+
+test('destination surplus is calculated from net pay after healthcare and can go to investments or cash', () => {
+    const config = { ...moveFixture, useFixedAbroadInvest: false, abroadNetIncome: 2200,
+        abroadLiving: 1250, abroadHealthcare: 150, abroadInvest: 900, abroadPension: 200 };
+    const invested = simulate(prepare(config), workForever, { record: true });
+    assert.equal(invested.rows[1].availableToSave, 800);
+    assert.equal(invested.rows[1].investedOutsideIsa, 800);
+    assert.equal(invested.rows[1].isaAdded, 0);
+    assert.equal(invested.rows.at(-1).taxable, 9600);
+    assert.equal(invested.rows.at(-1).pension, 2400);
+    const cash = simulate(prepare({ ...config, saveAbroadSurplusAsCash: true }), workForever, { record: true });
+    assert.equal(cash.rows[1].cashSaved, 800);
+    assert.equal(cash.rows.at(-1).cash - invested.rows.at(-1).cash, 9600);
+    assert.equal(cash.rows.at(-1).taxable, 0);
+    const short = simulate(prepare({ ...config, abroadNetIncome: 1300 }), workForever, { record: true });
+    assert.equal(short.rows[1].shortfall, 100);
+    assert.equal(short.rows[1].investedOutsideIsa, 0);
+});
+
+test('fixed destination investment still allows a smaller commitment and flags overcommitment', () => {
+    const config = { ...moveFixture, abroadNetIncome: 1700, abroadLiving: 1200, abroadHealthcare: 200 };
+    const manual = simulate(prepare({ ...config, abroadInvest: 200, useFixedAbroadInvest: true }),
+        workForever, { record: true });
+    assert.equal(manual.rows[1].surplus, 100);
+    assert.equal(manual.rows[1].investedOutsideIsa, 200);
+    const unfunded = simulate(prepare({ ...config, abroadInvest: 400, useFixedAbroadInvest: true }),
+        workForever, { record: true });
+    assert.equal(unfunded.rows[1].shortfall, 100);
+});
+
+test('UK savings allocation avoids double-counting a surplus or mortgage redirection as ISA funding', () => {
+    const p = prepare({ ...neutral, horizonAge: 51, netIncome: 2000, livingExpenses: 1000,
+        investUkSurplus: true, monthlyCash: 50, monthlyIsa: 150, monthlySipp: 100,
+        mortgageRemaining: 100, mortgageBase: 100, redirectMortgage: true });
+    const { rows } = simulate(p, workForever, { record: true });
+    assert.equal(rows[1].availableToSave, 800);
+    assert.equal(rows[1].isaAdded, 150);
+    assert.equal(rows[1].investedOutsideIsa, 600);
+    assert.equal(rows[2].isaAdded, 250);
+    assert.equal(rows[2].investedOutsideIsa, 600);
+    assert.equal(rows[2].cash, 100);
+    assert.equal(rows[2].pension, 200);
+    assert.equal(rows[2].surplus, 0);
+});
+
+test('retirement budget links and forecast frequencies produce equivalent monthly flows', () => {
+    const config = { ...neutral, currentAge: 68, horizonAge: 69, statePensionAge: 68,
+        livingExpenses: 1000, startingCash: 1200, statePensionAmount: 120,
+        targetIncome: 1000, retirementBudgetPeriod: 'monthly', statePensionPeriod: 'weekly' };
+    const monthly = prepare(config);
+    const annual = prepare({ ...config, targetIncome: 12000, retirementBudgetPeriod: 'annual',
+        statePensionAmount: 6240, statePensionPeriod: 'annual' });
+    const linked = prepare({ ...config, linkUkRetirementBudget: true, targetIncome: 0 });
+    const [a, b, c] = [monthly, annual, linked].map(p => simulate(p, fullNow, { record: true }).rows[1]);
+    assert.equal(a.statePension, 520);
+    assert.equal(a.budgetGap, 480);
+    assert.deepEqual(a, b);
+    assert.deepEqual(a, c);
+    const abroad = prepare({ ...moveFixture, linkAbroadRetirementBudget: true, abroadLiving: 810,
+        abroadHealthcare: 40, abroadRetirement: 99999, startingCash: 500 });
+    assert.equal(simulate(abroad, fullNow, { record: true }).rows[1].budgetGap, 850);
+});
+
+test('an estimated mortgage matches amortisation and leaves an entered payment available as an override', () => {
+    const config = { ...neutral, horizonAge: 51, mortgageRemaining: 10000, mortgageRate: 6,
+        mortgageTerm: 1, netIncome: 1200, mortgageBase: 900 };
+    const payment = 10000 * .005 / (1 - 1.005 ** -12);
+    const model = prepare({ ...config, estimateMortgagePayment: true });
+    close(model.mortgageBase, payment);
+    close(simulate(model, workForever, { record: true }).rows[1].mortgageCost, payment);
+    assert.equal(prepare(config).mortgageBase, 900);
+    close(prepare({ ...config, estimateMortgagePayment: true, mortgageRate: 0 }).mortgageBase, 10000 / 12);
+    assert.throws(() => prepare({ ...config, estimateMortgagePayment: true, mortgageTerm: 0 }), /remaining mortgage term/);
+});
+
+test('gross pay estimation respects employee NI thresholds and the selected household split', () => {
+    close(employeeNationalInsurance(12570), 0);
+    close(employeeNationalInsurance(50270), 3016);
+    close(employeeNationalInsurance(60270), 3216);
+    const takeHome = (30000 - (30000 - 12570) * .28) / 12;
+    close(estimateGrossMonthly(takeHome, 'rest', 1), 2500);
+    close(estimateGrossMonthly(takeHome * 2, 'rest', 2), 5000);
+    assert.ok(estimateGrossMonthly(5000, 'scotland', 1) > estimateGrossMonthly(5000, 'rest', 1));
+    close(prepare({ ...neutral, partTimeNet: takeHome, estimatePartTimeGross: true }).partTimeGross, 2500);
+});
+
+test('inactive overrides do not break the plan or discard a saved value', () => {
+    const stored = { ...neutral, estimateMortgagePayment: true, mortgageBase: -10,
+        linkUkRetirementBudget: true, targetIncome: -20,
+        useFixedAbroadInvest: false, abroadInvest: -300, annualOverpayRate: 0, firstAnnualOverpayMonth: -10 };
+    const p = prepare(stored);
+    assert.equal(p.mortgageBase, 0);
+    assert.equal(p.targetIncome, 0);
+    assert.equal(p.abroadInvest, 0);
+    assert.equal(stored.abroadInvest, -300);
+    assert.throws(() => prepare({ ...stored, useFixedAbroadInvest: true }), /below zero/);
+});
+
+test('saving a plan preserves explicit legacy inputs and upgrades the old example investment', () => {
+    for (const key of ['estimateMortgagePayment', 'estimatePartTimeGross', 'investUkSurplus', 'linkUkRetirementBudget']) {
+        assert.equal(restoreSettings(null)[key], true);
+        assert.equal(restoreSettings({ monthlyIsa: 90 })[key], false);
+    }
+    assert.equal(restoreSettings({ abroadInvest: 300 }).useFixedAbroadInvest, false);
+    assert.equal(restoreSettings({ abroadInvest: 0 }).useFixedAbroadInvest, true);
+    assert.equal(restoreSettings({ abroadInvest: 750 }).useFixedAbroadInvest, true);
+    assert.equal(restoreSettings({ abroadInvest: 300, useFixedAbroadInvest: true }).useFixedAbroadInvest, true);
+    const sample = project(exampleDefaults);
+    assert.equal(sample.work.shortfall, 0);
+    assert.ok(sample.work.investedOutsideIsa > 0);
+    assert.ok(Object.values(sample.plans).every(Boolean));
+});
+
+test('incremental comparison stress yields and matches the buffered chart on the same market paths', () => {
+    const p = prepare({ ...neutral, horizonAge: 52, startingIsa: 24500, targetIncome: 12000, volatility: 18,
+        overFundBuffer: 2 });
+    const options = { count: 32, buffered: true };
+    const steps = countSuccessSteps(p, fullNow, options);
+    assert.equal(steps.next().done, false);
+    let step;
+    do { step = steps.next(); } while (!step.done);
+    const chart = stressTest(p, fullNow, options);
+    assert.ok(chart.successes > 0 && chart.successes < options.count);
+    assert.deepEqual(step.value, { successes: chart.successes, count: chart.count });
+});
 
 test('the all-in budget remains constant during and after mortgage payoff', () => {
     const p = prepare({ ...neutral, horizonAge: 51, ukBudgetIncludesMortgage: true,
@@ -92,7 +217,7 @@ test('annual overpayments use available cash after regular payment, repeat, and 
     const switched = simulate(p, { mode: 'coast', start: 1 }, { record: true }).rows;
     assert.equal(switched[2].annualOverpay, 0);
     close(switched[2].cash, 550);
-    assert.throws(() => prepare({ ...neutral, firstAnnualOverpayMonth: 1.5 }), /whole number/);
+    assert.throws(() => prepare({ ...neutral, annualOverpayRate: 10, firstAnnualOverpayMonth: 1.5 }), /whole number/);
 });
 
 test('annual overpayments and FX-equivalent purchase costs conserve value at zero inflation', () => {

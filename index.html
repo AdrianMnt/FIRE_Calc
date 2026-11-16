@@ -26,7 +26,7 @@
                 <h2 id="assumptions-title">Planning assumptions</h2>
                 <button id="load-example" type="button">Load example</button>
             </div>
-            <p class="settings-note">Inputs are saved in this browser.</p>
+            <p class="settings-note">Inputs stay in this browser. Blank optional amounts count as zero.</p>
             <form id="inputs" aria-labelledby="assumptions-title"></form>
         </aside>
         <section class="results" aria-label="Projection results">
@@ -63,15 +63,20 @@
                         <summary>How to read these results</summary>
                         <p>Amounts use today’s pounds. Minimum take-home is for the part-time years and tests funding through the planning horizon. The relocation budget includes healthcare and funds only the period shown. Both estimates use the spending buffer. The stress test uses your entered take-home. Blank UK ages use today and the relocation age.</p>
                     </details>
+                    <p id="decision-assumptions" class="decision-assumptions"></p>
                     <p id="decision-error" class="notice" role="status" hidden></p>
-                    <div id="decision-cards" class="decision-cards" aria-live="polite"></div>
+                    <div id="decision-cards" class="decision-groups" aria-live="polite"></div>
                     <p id="decision-mortgage" class="decision-note" hidden></p>
                 </section>
-                <dl class="cards" id="summary" aria-live="polite"></dl>
-                <section id="explanation" class="panel explanation" aria-labelledby="explanation-title" hidden>
-                    <h2 id="explanation-title"></h2>
-                    <div id="explanation-body"></div>
-                </section>
+                <details class="panel plan-summary">
+                    <summary>Earliest FIRE dates and household snapshot</summary>
+                    <p>These dates are calculated from your current plan. The comparison above tests dates you choose.</p>
+                    <dl class="cards" id="summary" aria-live="polite"></dl>
+                    <section id="explanation" class="panel explanation" aria-labelledby="explanation-title" hidden>
+                        <h2 id="explanation-title"></h2>
+                        <div id="explanation-body"></div>
+                    </section>
+                </details>
                 <p class="notice" id="pay-warning" hidden></p>
                 <p class="notice" id="isa-warning" hidden><span id="isa-warning-detail"></span>
                     <a href="https://www.gov.uk/individual-savings-accounts/how-isas-work">Check the ISA rules</a>.
@@ -147,7 +152,7 @@
                                 <thead><tr>
                                     <th scope="col">Age</th><th scope="col">Phase at age</th>
                                     <th scope="col">Cash</th><th scope="col">ISA and opening investments</th>
-                                    <th scope="col">New investments abroad</th><th scope="col">Lifetime ISA</th>
+                                    <th scope="col">Other investments</th><th scope="col">Lifetime ISA</th>
                                     <th scope="col">Pension</th><th scope="col">Mortgage</th>
                                     <th scope="col">Home equity</th><th scope="col">Net worth</th>
                                     <th scope="col">Annual lump overpayments</th><th scope="col">Gross withdrawals</th><th scope="col">Gross State Pension</th>
@@ -170,6 +175,7 @@
                 <p>Work and Coast budgets use the take-home pay you enter, including any State Pension already included in your budget. Coast can use its own take-home income. The separate State Pension forecast is paid and taxed during part-time work and full retirement.</p>
                 <p>Cash earns the nominal interest rate you enter after tax. Home value and other assets and debts stay flat in real terms and count towards net worth. The optional relocation sells the UK home, repays the mortgage and buys a replacement home in cash. Any purchase gap comes from accessible savings, including a Lifetime ISA from age 60. Include other debt costs in your spending assumptions.</p>
                 <p>Each scenario must cover every month to the horizon and clear the mortgage by then. The safety buffer increases the spending used to test the baseline start. The target search, projection and stress test use your stated spending. A horizon of 95 means spending is funded up to the 95th birthday. You can also require a minimum period of full retirement before the horizon.</p>
+                <p>While working after a move, available pay after living costs and healthcare goes to investments by default. You can keep it in cash or enter a fixed investment instead. If you enable UK surplus investing, the model invests the remainder after your chosen cash, ISA and personal pension contributions.</p>
                 <p>Destination costs, pay and effective pension tax rates are editable sterling-equivalent assumptions. Cash purchase costs are paid before that month’s spending. Returns should reflect local investment taxes. The model uses a fixed real exchange-rate assumption and excludes treaty calculations, local tax reporting and separate pension access ages.</p>
                 <p>For a UK budget that includes the mortgage, the same total spending continues after payoff. Voluntary overpayments are extra. A rate change can recalculate the scheduled payment over the remaining term.</p>
                 <p>The <a href="https://www.gov.uk/lifetime-isa/withdrawing-money-from-your-lifetime-isa">Lifetime ISA</a> can fund spending from age 60. New investment contributions after the move go outside the UK ISA, following the <a href="https://www.gov.uk/individual-savings-accounts/if-you-move-abroad">UK non-resident ISA rules</a>.</p>

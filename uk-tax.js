@@ -27,7 +27,28 @@ const UKTax = (() => {
             - incomeTax(monthlyIncome * 12, region)) / 12;
     }
 
-    return Object.freeze({ incomeTax, incrementalMonthlyTax });
+    // Annualised 2026/27 Class 1 employee rates, standard category A.
+    function employeeNationalInsurance(annualPay) {
+        const main = Math.max(0, Math.min(annualPay, 50270) - 12570);
+        const upper = Math.max(0, annualPay - 50270);
+        return main * 0.08 + upper * 0.02;
+    }
+
+    function estimateGrossMonthly(netMonthly, region, people) {
+        if (netMonthly <= 0) return 0;
+        const target = netMonthly * 12 / people;
+        let low = target;
+        let high = target / 0.25;
+        for (let i = 0; i < 48; i++) {
+            const gross = (low + high) / 2;
+            const takeHome = gross - incomeTax(gross, region) - employeeNationalInsurance(gross);
+            if (takeHome < target) low = gross;
+            else high = gross;
+        }
+        return high * people / 12;
+    }
+
+    return Object.freeze({ incomeTax, incrementalMonthlyTax, employeeNationalInsurance, estimateGrossMonthly });
 })();
 
 if (typeof module !== 'undefined') module.exports = UKTax;
