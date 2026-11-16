@@ -3,7 +3,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { incomeTax } = require('./uk-tax.js');
-const { prepare, project, simulate, stressTest, findSuccessAges, confirmSuccess } = require('./fire-model.js');
+const { prepare, project, compare, simulate, stressTest, findSuccessAges, confirmSuccess } = require('./fire-model.js');
 
 const neutral = {
     currentAge: 50, horizonAge: 60, startingIsa: 0, startingCash: 0, startingPension: 0,
@@ -14,9 +14,176 @@ const neutral = {
 };
 const fullNow = { mode: 'full', start: 0 };
 const workForever = { mode: 'full', start: Infinity };
+const moveFixture = {
+    ...neutral, relocate: true, moveAge: 50, horizonAge: 51, homeValue: 100000,
+    replacementHome: 65000, saleCosts: 2000, purchaseCosts: 1000, movingCosts: 2000,
+    abroadRetirement: 0, abroadHealthcare: 0, abroadLiving: 0, abroadNetIncome: 0,
+    abroadInvest: 0, abroadPension: 0, abroadPartTimeNet: 0
+};
+
 function close(actual, expected, tolerance = 0.01) {
     assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} differs from ${expected}`);
 }
+
+test('Lifetime ISA stays locked until 60 and never substitutes for an earlier private pension', () => {
+    const inputs = { ...neutral, currentAge: 59.75, horizonAge: 60.25, startingLisa: 4000,
+        targetIncome: 12000, pensionAccessAge: 59.75, startingPension: 3000 };
+    const { rows, success } = simulate(prepare(inputs), fullNow, { record: true });
+    assert.equal(success, true);
+    assert.equal(rows[0].accessible, 0);
+    assert.equal(rows[0].portfolio, 7000);
+    assert.equal(rows[2].accessible, 0);
+    assert.equal(rows[3].accessible, 4000);
+    assert.equal(rows[3].pension, 0);
+    assert.equal(rows.at(-1).lisa, 1000);
+    assert.equal(simulate(prepare({ ...inputs, startingPension: 0 }), fullNow).failureMonth, 1);
+});
+
+test('an equal UK household split applies two allowances and taxes State Pension and drawdown incrementally', () => {
+    const inputs = { ...neutral, currentAge: 68, horizonAge: 69, pensionAccessAge: 57,
+        startingPension: 300000, statePensionAmount: 24000, targetIncome: 36000, lumpSumAllowance: 0 };
+    const first = splitHouseholdTax => simulate(prepare({ ...inputs, splitHouseholdTax }),
+        fullNow, { record: true }).rows[1];
+    close(first(true).drawn, 1226.25);
+    close(first(true).tax, 226.25);
+    close(first(false).drawn, 1488.125);
+    close(first(false).tax, 488.125);
+});
+
+test('UK private pension tax uplift applies only to the taxable drawdown portion', () => {
+    const p = prepare({ ...neutral, pensionAccessAge: 50, horizonAge: 51, startingPension: 50000,
+        targetIncome: 6000, pensionTaxExtra: 10 });
+    const first = simulate(p, fullNow, { record: true }).rows[1];
+    close(first.drawn, 500 / 0.925);
+    close(first.tax, 500 / 0.925 - 500);
+});
+
+test('relocation releases equity once and reduces net worth by transaction costs only', () => {
+    const p = prepare({ ...moveFixture, mortgageRemaining: 25000, mortgageBase: 500,
+        mortgageRate: 12, startingCash: 1000, startingLisa: 2000, startingPension: 40000 });
+    const { rows } = simulate(p, fullNow, { record: true });
+    assert.deepEqual(rows[1].relocation, { equity: 75000, costs: 5000, net: 5000, shortfall: 0, available: 1000 });
+    assert.equal(rows[1].mortgageCost, 0);
+    assert.equal(rows[1].equity, 65000);
+    assert.equal(rows[1].cash, 6000);
+    assert.equal(rows.at(-1).cash, 6000);
+    assert.equal(rows[1].netWorth, rows[0].netWorth - 5000);
+});
+
+test('sale repays the nominal mortgage in sale-month pounds after scheduled overpayments', () => {
+    const p = prepare({ ...moveFixture, moveAge: 51, horizonAge: 52, mortgageRemaining: 30000,
+        mortgageBase: 400, mortgageOverpay: 100, mortgageRate: 6, inflation: 3, netIncome: 1000 });
+    const { rows } = simulate(p, { mode: 'full', start: 12 }, { record: true });
+    const debt = (30000 * 1.005 ** 12 - 500 * (1.005 ** 12 - 1) / .005) / 1.03;
+    close(rows[12].mortgage, debt);
+    close(rows[13].relocation.equity, 100000 - debt);
+    assert.equal(rows[13].mortgage, 0);
+});
+
+test('relocation gap uses liquid balances only and an unaffordable purchase is atomic', () => {
+    const inputs = { ...moveFixture, replacementHome: 100000, startingCash: 1000, startingIsa: 3999,
+        startingLisa: 5000, startingPension: 500000, pensionAccessAge: 50 };
+    const result = simulate(prepare(inputs), fullNow, { record: true });
+    assert.equal(result.failureMonth, 1);
+    assert.equal(result.relocationShortfall, true);
+    assert.equal(result.rows[1].shortfall, 1);
+    assert.equal(result.rows[1].cash, 1000);
+    assert.equal(result.rows[1].isa, 3999);
+    const funded = simulate(prepare({ ...inputs, startingIsa: 4000 }), fullNow, { record: true });
+    assert.equal(funded.success, true);
+    assert.equal(funded.rows[1].accessible, 0);
+    const after60 = simulate(prepare({ ...inputs, currentAge: 60, moveAge: 60, horizonAge: 61 }),
+        fullNow, { record: true });
+    assert.equal(after60.rows[1].lisa, 4999);
+});
+
+test('working abroad switches contributions and budgets without using UK ISA allowance', () => {
+    const p = prepare({ ...moveFixture, startingCash: 0, startingIsa: 0,
+        abroadNetIncome: 1200, abroadLiving: 800, abroadHealthcare: 150, abroadInvest: 250,
+        abroadPension: 200, monthlyIsa: 999, monthlyCash: 999, monthlySipp: 999,
+        workplacePension: 999, redirectMortgage: true, mortgageBase: 100, mortgageRemaining: 5000 });
+    const { rows, success } = simulate(p, workForever, { record: true });
+    assert.equal(success, true);
+    assert.equal(rows[1].isaAdded, 0);
+    assert.equal(rows.at(-1).isa, 0);
+    assert.equal(rows.at(-1).taxable, 3000);
+    assert.equal(rows.at(-1).pension, 2400);
+});
+
+test('post-move effective tax rates apply separately to State Pension and gross drawdown', () => {
+    const p = prepare({ ...moveFixture, replacementHome: 95000, pensionAccessAge: 50, statePensionAge: 50,
+        startingPension: 100000, statePensionAmount: 6000, abroadRetirement: 13200, abroadHealthcare: 100,
+        abroadPensionTax: 40, abroadStateTax: 20, lumpSumEnabled: true, lumpSumAmount: 10000 });
+    const { rows } = simulate(p, fullNow, { record: true });
+    close(rows[1].drawn, 800 / .6);
+    close(rows[1].tax, 100 + 800 / .6 * .4);
+    assert.equal(rows[1].cash, 0);
+    assert.equal(simulate({ ...p, abroadPensionTax: 100 }, fullNow).failureMonth, 1);
+});
+
+test('UK cash earmarked for a home purchase comes from pay and stops under Coast FIRE', () => {
+    const p = prepare({ ...moveFixture, moveAge: 50.5, replacementHome: 98000,
+        netIncome: 500, monthlyCash: 500, abroadCoastNet: 0 });
+    const working = simulate(p, workForever, { record: true });
+    assert.equal(working.rows[6].cash, 3000);
+    assert.equal(working.rows[7].cash, 0);
+    assert.equal(working.success, true);
+    assert.equal(simulate(p, { mode: 'coast', start: 0 }).relocationShortfall, true);
+});
+
+test('start at relocation can satisfy the Barista mortgage gate using a funded sale', () => {
+    const result = project({ ...moveFixture, moveAge: 50.5, mortgageRemaining: 10000,
+        partTimeAfterMortgage: true, partTimeEndAge: 51, abroadPartTimeNet: 100 });
+    assert.equal(result.plans.partTime.start, 6);
+});
+
+test('custom milestones sort and deduplicate, with a LISA crossing at its access age', () => {
+    const result = project({ ...neutral, currentAge: 59.5, horizonAge: 61,
+        startingLisa: 100, customMilestones: '100, 50,50, 500' });
+    assert.deepEqual(result.milestones.filter(item => item.metric === 'accessible')
+        .map(({ target, month }) => [target, month]), [[50, 6], [100, 6], [500, null]]);
+    for (const value of ['5,,7', '0', '1e5', '-2', '1.001']) {
+        assert.throws(() => prepare({ ...neutral, customMilestones: value }), /milestone/);
+    }
+});
+
+test('return comparison uses exact real rates with independent location and sensitivity cases', () => {
+    const inputs = { ...moveFixture, moveAge: 51, horizonAge: 53, startingIsa: 10000,
+        replacementHome: 106000, inflation: 3, grossReturn: 3, statePensionAmount: 100,
+        mortgageRemaining: 1, mortgageOverpay: 1, netIncome: 10 };
+    const rows = compare(inputs);
+    const selected = (relocate, label) => rows.find(row => row.relocate === relocate && row.label === label);
+    close(selected(true, '3% real').failure.shortfall, 700);
+    close(selected(true, '4% real').failure.shortfall, 600);
+    close(selected(true, '6% real').failure.shortfall, 400);
+    assert.equal(selected(false, '3% real').move, undefined);
+    assert.equal(selected(false, '3% real').failure, null);
+    assert.ok(selected(true, 'No State Pension'));
+    assert.ok(selected(true, 'Private pension tax +10 pp'));
+    assert.ok(selected(false, 'No mortgage overpayment'));
+    assert.throws(() => compare({ ...inputs, moveAge: 49 }), /relocation age/);
+});
+
+test('a failed stochastic purchase remains a failed path for later start ages', () => {
+    const p = prepare({ ...moveFixture, moveAge: 50.5, startingIsa: 10000, replacementHome: 105000,
+        volatility: 45, abroadPartTimeNet: 100, partTimeEndAge: 51 });
+    const count = 40;
+    const seed = 21;
+    const plan = { mode: 'partTime', start: 6 };
+    const stress = stressTest(p, plan, { count, seed });
+    assert.ok(stress.successes > 0 && stress.successes < count);
+    assert.equal(stress.failures.relocation, count - stress.successes);
+    const run = target => {
+        const search = findSuccessAges(p, target, { count, seed });
+        let step = search.next();
+        while (!step.done) step = search.next();
+        return step.value.partTime;
+    };
+    assert.equal(run(100), null);
+    const found = run(100 * stress.successes / count);
+    assert.equal(found.start, 6);
+    assert.equal(found.successes, stress.successes);
+});
 
 test('2026/27 UK and Scottish tax by hand, including allowance taper', () => {
     assert.equal(incomeTax(12570, 'rest'), 0);
