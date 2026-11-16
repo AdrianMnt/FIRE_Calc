@@ -38,7 +38,10 @@
                             <h2 id="decision-title">Compare your next move</h2>
                             <p>Compare staying in the UK and working part-time with retiring after a move.</p>
                         </div>
-                        <button type="button" class="decision-link" id="decision-edit">Edit budgets and pay</button>
+                        <div class="decision-actions">
+                            <button type="button" class="decision-link" id="decision-edit">Edit UK pay and budget</button>
+                            <button type="button" class="decision-link" id="decision-edit-move">Edit relocation costs</button>
+                        </div>
                     </div>
                     <form id="decision-form" class="decision-controls">
                         <label>UK part-time start age <input id="decision-uk" type="number" step="any"></label>
@@ -56,7 +59,10 @@
                         </label>
                         <label class="switch"><input id="decision-stress" type="checkbox"> Stress-test these dates</label>
                     </form>
-                    <p class="decision-note">All figures are in today’s pounds. The cards use your shared household, spending and relocation settings, including the spending buffer. The relocation budget includes healthcare and covers only the period shown. The minimum take-home estimate tests funding through the planning horizon. Blank UK ages use today and the relocation age.</p>
+                    <details class="decision-method">
+                        <summary>How to read these results</summary>
+                        <p>Amounts use today’s pounds. Minimum take-home is for the part-time years and tests funding through the planning horizon. The relocation budget includes healthcare and funds only the period shown. Both estimates use the spending buffer. The stress test uses your entered take-home. Blank UK ages use today and the relocation age.</p>
+                    </details>
                     <p id="decision-error" class="notice" role="status" hidden></p>
                     <div id="decision-cards" class="decision-cards" aria-live="polite"></div>
                     <p id="decision-mortgage" class="decision-note" hidden></p>

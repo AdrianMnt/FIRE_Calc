@@ -179,6 +179,7 @@ test('fixed-date stress testing can use the same spending buffer as the decision
         targetIncome: 12000, volatility: 0, overFundBuffer: 10 });
     assert.equal(stressTest(p, fullNow, { count: 4 }).successes, 4);
     assert.equal(stressTest(p, fullNow, { count: 4, buffered: true }).successes, 0);
+    assert.deepEqual(confirmSuccess(p, fullNow, { count: 4, buffered: true }), { successes: 0, count: 4 });
 });
 
 test('Lifetime ISA stays locked until 60 and never substitutes for an earlier private pension', () => {

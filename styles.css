@@ -317,6 +317,8 @@ dialog::backdrop { background: #070b14b5; }
 .decision-heading { display: flex; flex-wrap: wrap; align-items: start; justify-content: space-between; gap: .5rem; }
 .decision-heading h2 { font-size: clamp(1.35rem, 3vw, 2rem); letter-spacing: -.035em; }
 .decision-heading p { margin: .35rem 0 .65rem; }
+.decision-actions { display: flex; flex-wrap: wrap; gap: .35rem; }
+.decision-method { margin: .55rem 0 .7rem; font-size: .81rem; color: var(--muted); }
 .decision-link {
     font: inherit;
     font-size: .83rem;
@@ -372,6 +374,7 @@ dialog::backdrop { background: #070b14b5; }
     background: color-mix(in srgb, var(--location) 8%, var(--panel));
 }
 .minimum-pay dd { font-size: clamp(1.25rem, 2vw, 1.55rem); color: var(--location); }
+.minimum-pay small { display: block; font-size: .75rem; font-weight: 450; color: var(--muted); }
 .section-links { display: flex; flex-wrap: wrap; gap: .3rem .8rem; margin: .65rem 0 .35rem; font-size: .86rem; }
 .section-links a { padding: .22rem 0; text-underline-offset: .18em; }
 #decision-title, #assumptions-title, #projection-title { scroll-margin-top: 1rem; }

@@ -563,13 +563,14 @@ function decisionCard(result, runStress) {
     const headline = element('p', status);
     headline.className = 'decision-status';
     headline.dataset.funded = String(result.success);
-    section.append(element('h3', label), element('p', 'Starts at age ' + startAge), headline);
+    const timing = uk ? 'Age ' + startAge + ' to ' + age(p.partTimeEndAge) : 'Move at age ' + startAge;
+    section.append(element('h3', label), element('p', timing), headline);
 
     const figures = [];
     if (transition) {
         if (purchase) figures.push(['UK equity at sale', gbp(purchase.equity)],
             ['Sale, purchase and move costs', gbp(purchase.costs)],
-            [purchase.net < 0 ? 'Savings used for purchase' : 'Cash released by move', gbp(Math.abs(purchase.net))],
+            [purchase.net < 0 ? 'Savings needed for purchase' : 'Cash released by move', gbp(Math.abs(purchase.net))],
             ['Available after the purchase', result.availableAfterPurchase === null ? 'Purchase unfunded' : gbp(result.availableAfterPurchase)]);
         else if (uk) figures.push(['Accessible at switch', gbp(transition.accessible)],
             ['Mortgage at switch', gbp(transition.mortgage)]);
@@ -578,19 +579,26 @@ function decisionCard(result, runStress) {
             gbp(Math.abs(result.firstGap))
         ]);
     }
-    if (result.minimumPay !== null) figures.unshift(['Minimum take-home per month while working', gbp(result.minimumPay), 'minimum-pay']);
+    if (result.minimumPay !== null) {
+        const difference = p.partTimeNet - result.minimumPay;
+        const comparison = difference === 0 ? 'Matches the entered take-home'
+            : gbp(Math.abs(difference)) + (difference > 0 ? ' below' : ' above') + ' the entered take-home';
+        figures.unshift(['Minimum monthly take-home', gbp(result.minimumPay), 'minimum-pay', comparison]);
+    }
     if (result.bridge) figures.push(['Monthly budget through age ' + age(result.bridge.endAge),
         gbp(result.bridge.monthly)]);
     if (failure) figures.push(['First unfunded amount', gbp(failure.shortfall)]);
     if (runStress && !constraint) {
-        const stress = stressTest(p, result.plan, { buffered: true });
-        figures.push(['Funded in market simulations', stress.successes + ' / ' + stress.count]);
+        const stress = confirmSuccess(p, result.plan, { buffered: true });
+        figures.push(['Funded at entered pay and spending', stress.successes + ' / ' + stress.count]);
     }
     const list = element('dl');
-    for (const [name, value, kind] of figures) {
+    for (const [name, value, kind, note] of figures) {
         const row = element('div');
         if (kind) row.className = kind;
-        row.append(element('dt', name), element('dd', value));
+        const detail = element('dd', value);
+        if (note) detail.append(element('small', note));
+        row.append(element('dt', name), detail);
         list.append(row);
     }
     section.append(list);
@@ -742,12 +750,13 @@ get('comparison-panel').addEventListener('toggle', () => {
     if (get('comparison-panel').open && latestPrepared) renderComparison(latestInputs, latestPrepared);
 });
 
-get('decision-edit').addEventListener('click', () => {
-    const section = fields.get('partTimeNet').closest('details');
-    fields.get('abroadRetirement').closest('details').open = true;
-    section.open = true;
-    fields.get('partTimeNet').focus();
-});
+for (const [button, key] of [['decision-edit', 'partTimeNet'], ['decision-edit-move', 'purchaseCosts']]) {
+    get(button).addEventListener('click', () => {
+        const field = fields.get(key);
+        field.closest('details').open = true;
+        field.focus();
+    });
+}
 get('decision-form').addEventListener('submit', event => event.preventDefault());
 let decisionTimer;
 get('decision-form').addEventListener('input', () => {

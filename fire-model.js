@@ -627,11 +627,11 @@ const FireModel = ((tax) => {
         return { successes, count, ranges, failures, medianFailureMonth };
     }
 
-    function confirmSuccess(p, plan, { count = 500, seed = 2246822519 } = {}) {
+    function confirmSuccess(p, plan, { count = 500, seed = 2246822519, buffered = false } = {}) {
         const paths = marketPaths(p, count, seed);
         let successes = 0;
         for (const path of paths) {
-            if (simulate(p, plan, { growthAt: month => path[month] }).success) successes++;
+            if (simulate(p, plan, { buffered, growthAt: month => path[month] }).success) successes++;
         }
         return { successes, count };
     }
