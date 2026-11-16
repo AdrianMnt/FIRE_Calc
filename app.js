@@ -234,10 +234,12 @@ const riskEnabled = get('risk-enabled');
 const riskTarget = get('risk-target');
 riskEnabled.checked = saved.riskEnabled === true;
 const decisionFields = {
-    uk: get('decision-uk'), ukLater: get('decision-uk-later'), move: get('decision-move'), low: get('decision-low'),
+    uk: get('decision-uk'), ukLater: get('decision-uk-later'), includeMove: get('decision-include-move'),
+    move: get('decision-move'), low: get('decision-low'),
     high: get('decision-high'), realReturn: get('decision-return'), stress: get('decision-stress')
 };
-const decisionDefaults = { uk: '', ukLater: '', move: '', low: 80000, high: 110000, realReturn: '', stress: false };
+const decisionDefaults = { uk: '', ukLater: '', includeMove: true, move: '', low: 80000, high: 110000,
+    realReturn: '', stress: false };
 function resetDecision(values = {}) {
     for (const [key, input] of Object.entries(decisionFields)) {
         const value = values[key] ?? decisionDefaults[key];
@@ -736,24 +738,34 @@ function decisionCard(result, tasks) {
     return section;
 }
 
+function refreshDecisionInputs() {
+    get('decision-edit-move').hidden = !decisionFields.includeMove.checked;
+    for (const field of [decisionFields.move, decisionFields.low, decisionFields.high]) {
+        field.disabled = !decisionFields.includeMove.checked;
+        field.labels[0].hidden = field.disabled;
+    }
+}
+
 function renderDecision(inputs, p) {
     const error = get('decision-error');
     const cards = get('decision-cards');
     const mortgage = get('decision-mortgage');
     const basis = get('decision-assumptions');
     try {
-        if (Object.values(decisionFields).some(input => input.validity.badInput)) {
+        refreshDecisionInputs();
+        if (Object.values(decisionFields).some(input => !input.disabled && input.validity.badInput)) {
             throw new Error('Enter a valid number for each age and price.');
         }
         decisionFields.uk.placeholder = String(p.age / 12);
         const moveDefault = p.moveAge < p.currentAge || p.moveAge >= p.horizonAge ? p.age / 12 : p.moveAge;
         decisionFields.move.placeholder = String(moveDefault);
-        const moveAge = decisionFields.move.value === '' ? moveDefault : decisionFields.move.valueAsNumber;
-        decisionFields.ukLater.placeholder = String(moveAge);
+        const includeRelocation = decisionFields.includeMove.checked;
+        const moveAge = includeRelocation && decisionFields.move.value !== '' ? decisionFields.move.valueAsNumber : moveDefault;
+        decisionFields.ukLater.placeholder = includeRelocation ? String(moveAge) : 'Optional';
         const options = {
             ukAge: decisionFields.uk.value === '' ? p.age / 12 : decisionFields.uk.valueAsNumber,
-            laterUkAge: decisionFields.ukLater.value === '' ? moveAge : decisionFields.ukLater.valueAsNumber,
-            moveAge,
+            laterUkAge: decisionFields.ukLater.value === '' ? (includeRelocation ? moveAge : null) : decisionFields.ukLater.valueAsNumber,
+            includeRelocation, moveAge,
             lowerPrice: decisionFields.low.valueAsNumber, higherPrice: decisionFields.high.valueAsNumber,
             realReturn: decisionFields.realReturn.value === '' ? null : Number(decisionFields.realReturn.value)
         };
@@ -768,7 +780,7 @@ function renderDecision(inputs, p) {
             ['Stay in the UK', results.filter(result => result.plan.mode === 'partTime')],
             ['Relocate and retire', results.filter(result => result.plan.mode === 'full')]
         ];
-        cards.replaceChildren(...groups.map(([title, plans]) => {
+        cards.replaceChildren(...groups.filter(([, plans]) => plans.length).map(([title, plans]) => {
             const group = element('section');
             group.className = 'decision-group';
             const list = element('div');
@@ -778,8 +790,8 @@ function renderDecision(inputs, p) {
             return group;
         }));
         const move = results.find(result => result.plan.mode === 'full');
-        mortgage.hidden = move.annualOverpayment === 0 && move.unfundedAnnualOverpayment === 0;
-        mortgage.textContent = 'Before the move, cash savings fund ' + gbp(move.annualOverpayment)
+        mortgage.hidden = !move || (move.annualOverpayment === 0 && move.unfundedAnnualOverpayment === 0);
+        mortgage.textContent = !move ? '' : 'Before the move, cash savings fund ' + gbp(move.annualOverpayment)
             + ' in annual mortgage overpayments. Planned amounts that cash could not cover total '
             + gbp(move.unfundedAnnualOverpayment) + '.';
         error.hidden = true;
@@ -951,6 +963,7 @@ for (const [button, key] of [['decision-edit', 'partTimeNet'], ['decision-edit-m
 get('decision-form').addEventListener('submit', event => event.preventDefault());
 let decisionTimer;
 get('decision-form').addEventListener('input', () => {
+    refreshDecisionInputs();
     clearTimeout(decisionTimer);
     decisionTimer = setTimeout(() => {
         if (!latestPrepared) return;

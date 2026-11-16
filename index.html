@@ -46,6 +46,7 @@
                     <form id="decision-form" class="decision-controls">
                         <label>UK part-time start age <input id="decision-uk" type="number" step="any"></label>
                         <label>Second UK start age <input id="decision-uk-later" type="number" step="any"></label>
+                        <label class="switch"><input id="decision-include-move" type="checkbox" checked> Compare relocation</label>
                         <label>Relocation and retirement age <input id="decision-move" type="number" step="any"></label>
                         <label>Lower home price (£) <input id="decision-low" type="number" step="any" min="0" required></label>
                         <label>Higher home price (£) <input id="decision-high" type="number" step="any" min="0" required></label>
@@ -61,7 +62,7 @@
                     </form>
                     <details class="decision-method">
                         <summary>How to read these results</summary>
-                        <p>Amounts use today’s pounds. Minimum take-home is for the part-time years and tests funding through the planning horizon. The relocation budget includes healthcare and funds only the period shown. Both estimates use the spending buffer. The stress test uses your entered take-home. Blank UK ages use today and the relocation age.</p>
+                        <p>Amounts use today’s pounds. Minimum take-home is for the part-time years and tests funding through the planning horizon. The relocation budget includes healthcare and funds only the period shown. Both estimates use the spending buffer. The stress test uses your entered take-home. A blank first UK age uses today. With relocation on, a blank second UK age uses the relocation age.</p>
                     </details>
                     <p id="decision-assumptions" class="decision-assumptions"></p>
                     <p id="decision-error" class="notice" role="status" hidden></p>

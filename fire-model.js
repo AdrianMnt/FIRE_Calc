@@ -543,13 +543,14 @@ const FireModel = ((tax) => {
     }
 
     // Compare exact dates, including plans that the earliest-date search cannot fund.
-    function decision(inputs, { ukAge, laterUkAge = null, moveAge, lowerPrice, higherPrice, realReturn = null }) {
+    function decision(inputs, { ukAge, laterUkAge = null, includeRelocation = true, moveAge, lowerPrice, higherPrice,
+        realReturn = null }) {
         const base = prepare({ ...inputs, relocate: false });
         const ukStart = decisionMonth(base, ukAge, 'UK part-time');
-        const moveStart = decisionMonth(base, moveAge, 'relocation');
+        const moveStart = includeRelocation ? decisionMonth(base, moveAge, 'relocation') : null;
         const laterUkStart = laterUkAge === null ? ukStart : decisionMonth(base, laterUkAge, 'second UK part-time');
-        if (![lowerPrice, higherPrice].every(price => Number.isFinite(price) && price >= 0 && price <= 1e10)
-            || lowerPrice > higherPrice) {
+        if (includeRelocation && (![lowerPrice, higherPrice].every(price => Number.isFinite(price)
+            && price >= 0 && price <= 1e10) || lowerPrice > higherPrice)) {
             throw new Error('Enter two positive or zero purchase prices, in ascending order.');
         }
         if (realReturn !== null && (!Number.isFinite(realReturn) || realReturn <= -100 || realReturn > 100)) {
@@ -590,10 +591,11 @@ const FireModel = ((tax) => {
                 unfundedAnnualOverpayment: run.rows.reduce((total, row) => total + (row.annualOverpayUnfunded ?? 0), 0)
             };
         }
-        const uk = evaluate(base, 'partTime', ukStart);
-        const moves = [lowerPrice, higherPrice].map(replacementHome =>
-            evaluate(prepare({ ...inputs, relocate: true, moveAge, replacementHome }), 'full', moveStart));
-        return laterUkStart === ukStart ? [uk, ...moves] : [uk, evaluate(base, 'partTime', laterUkStart), ...moves];
+        const uk = [evaluate(base, 'partTime', ukStart)];
+        if (laterUkStart !== ukStart) uk.push(evaluate(base, 'partTime', laterUkStart));
+        const moves = includeRelocation ? [lowerPrice, higherPrice].map(replacementHome =>
+            evaluate(prepare({ ...inputs, relocate: true, moveAge, replacementHome }), 'full', moveStart)) : [];
+        return [...uk, ...moves];
     }
 
     function minimumPartTimePay(p, plan) {

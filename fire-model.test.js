@@ -137,6 +137,18 @@ test('saving a plan preserves explicit legacy inputs and upgrades the old exampl
     assert.ok(Object.values(sample.plans).every(Boolean));
 });
 
+test('a UK-only comparison accepts no relocation dates or prices and keeps a second UK start', () => {
+    const inputs = { ...neutral, horizonAge: 51, partTimeNet: 200, partTimeGross: 200,
+        partTimeEndAge: 50.5, targetIncome: 1200 };
+    const [first, later] = decision(inputs, {
+        includeRelocation: false, ukAge: 50, laterUkAge: 50.25, moveAge: NaN, lowerPrice: NaN, higherPrice: -1
+    });
+    assert.equal(first.plan.mode, 'partTime');
+    assert.equal(later.plan.start, 3);
+    const single = decision(inputs, { includeRelocation: false, ukAge: 50 });
+    assert.equal(single.length, 1);
+});
+
 test('incremental comparison stress yields and matches the buffered chart on the same market paths', () => {
     const p = prepare({ ...neutral, horizonAge: 52, startingIsa: 24500, targetIncome: 12000, volatility: 18,
         overFundBuffer: 2 });
