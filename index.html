@@ -13,7 +13,12 @@
 <body>
     <header class="page-header">
         <div class="page-title"><span class="brand-mark" aria-hidden="true">↗</span><h1>FIRE Calculator</h1></div>
-        <p>Compare full retirement, Coast FIRE and Barista FIRE in today’s pounds.</p>
+        <p>Compare full retirement, Coast FIRE and part-time work in today’s pounds.</p>
+        <nav class="section-links" aria-label="Calculator sections">
+            <a href="#decision-title">Compare plans</a>
+            <a href="#assumptions-title">Edit assumptions</a>
+            <a href="#projection-title">View projection</a>
+        </nav>
     </header>
     <main>
         <aside class="settings">
@@ -31,13 +36,14 @@
                     <div class="decision-heading">
                         <div>
                             <h2 id="decision-title">Compare your next move</h2>
-                            <p>Test UK part-time work and two Romanian cash purchases at dates you choose.</p>
+                            <p>Compare staying in the UK and working part-time with retiring after a move.</p>
                         </div>
                         <button type="button" class="decision-link" id="decision-edit">Edit budgets and pay</button>
                     </div>
                     <form id="decision-form" class="decision-controls">
-                        <label>UK part-time start age <input id="decision-uk" type="number" step="any" required></label>
-                        <label>Romania move and retire age <input id="decision-move" type="number" step="any" required></label>
+                        <label>UK part-time start age <input id="decision-uk" type="number" step="any"></label>
+                        <label>Second UK start age <input id="decision-uk-later" type="number" step="any"></label>
+                        <label>Relocation and retirement age <input id="decision-move" type="number" step="any"></label>
                         <label>Lower home price (£) <input id="decision-low" type="number" step="any" min="0" required></label>
                         <label>Higher home price (£) <input id="decision-high" type="number" step="any" min="0" required></label>
                         <label>Investment return
@@ -50,7 +56,7 @@
                         </label>
                         <label class="switch"><input id="decision-stress" type="checkbox"> Stress-test these dates</label>
                     </form>
-                    <p class="decision-note">All figures are in today’s pounds. The cards use your shared household, spending and relocation settings, including the spending buffer. The Romanian monthly budget includes healthcare and covers only the period shown.</p>
+                    <p class="decision-note">All figures are in today’s pounds. The cards use your shared household, spending and relocation settings, including the spending buffer. The relocation budget includes healthcare and covers only the period shown. The minimum take-home estimate tests funding through the planning horizon. Blank UK ages use today and the relocation age.</p>
                     <p id="decision-error" class="notice" role="status" hidden></p>
                     <div id="decision-cards" class="decision-cards" aria-live="polite"></div>
                     <p id="decision-mortgage" class="decision-note" hidden></p>
@@ -66,7 +72,7 @@
                 </p>
                 <details class="panel" id="comparison-panel">
                     <summary>Location, returns and pension sensitivity</summary>
-                    <p>Each row recalculates the earliest start for all three FIRE plans. The 3%, 4% and 6% cases use real annual investment returns after fees and taxes. Enable relocation in the settings to compare staying in the UK with buying in Romania.</p>
+                    <p>Each row recalculates the earliest start for all three FIRE plans. The 3%, 4% and 6% cases use real annual investment returns after fees and taxes. Enable relocation in the settings to compare staying in the UK with a move and cash purchase.</p>
                     <div class="table-scroll" tabindex="0" role="region" aria-label="FIRE scenario comparison">
                         <table>
                             <thead><tr>
@@ -98,7 +104,7 @@
                 </section>
                 <section class="panel projection-panel">
                     <div class="panel-heading">
-                        <h2>Projection</h2>
+                        <h2 id="projection-title">Projection</h2>
                         <label for="mode">Scenario
                             <select id="mode">
                                 <option value="full">Full FIRE</option>
@@ -154,11 +160,12 @@
             </div>
             <details class="panel">
                 <summary>Model assumptions</summary>
-                <p>One household, one shared age timeline, one pooled defined-contribution pension and one fixed-rate mortgage. The optional two-person UK tax estimate splits taxable income equally. Part-time and retirement income tax uses annualised 2026/27 rates in today’s pounds. Tax bands rise with inflation in the projection. The remaining tax-free pension allowance is a fixed nominal limit.</p>
+                <p>One household, one shared age timeline, one pooled defined-contribution pension and one mortgage with an optional rate change. The optional two-person UK tax estimate splits taxable income equally. Part-time and retirement income tax uses annualised 2026/27 rates in today’s pounds. Tax bands rise with inflation in the projection. The remaining tax-free pension allowance is a fixed nominal limit.</p>
                 <p>Work and Coast budgets use the take-home pay you enter, including any State Pension already included in your budget. Coast can use its own take-home income. The separate State Pension forecast is paid and taxed during part-time work and full retirement.</p>
-                <p>Cash earns the nominal interest rate you enter after tax. Home value and other assets and debts stay flat in real terms and count towards net worth. The optional relocation sells the UK home, repays the mortgage and buys a Romanian home in cash. Any purchase gap comes from accessible savings, including a Lifetime ISA from age 60. Include other debt costs in your spending assumptions.</p>
+                <p>Cash earns the nominal interest rate you enter after tax. Home value and other assets and debts stay flat in real terms and count towards net worth. The optional relocation sells the UK home, repays the mortgage and buys a replacement home in cash. Any purchase gap comes from accessible savings, including a Lifetime ISA from age 60. Include other debt costs in your spending assumptions.</p>
                 <p>Each scenario must cover every month to the horizon and clear the mortgage by then. The safety buffer increases the spending used to test the baseline start. The target search, projection and stress test use your stated spending. A horizon of 95 means spending is funded up to the 95th birthday. You can also require a minimum period of full retirement before the horizon.</p>
-                <p>Romanian costs, pay and effective pension tax rates are editable sterling-equivalent assumptions. Cash purchase costs are paid before that month’s spending. Returns should reflect local investment taxes. The model uses a fixed real exchange-rate assumption and excludes treaty calculations, local tax reporting and separate pension access ages.</p>
+                <p>Destination costs, pay and effective pension tax rates are editable sterling-equivalent assumptions. Cash purchase costs are paid before that month’s spending. Returns should reflect local investment taxes. The model uses a fixed real exchange-rate assumption and excludes treaty calculations, local tax reporting and separate pension access ages.</p>
+                <p>For a UK budget that includes the mortgage, the same total spending continues after payoff. Voluntary overpayments are extra. A rate change can recalculate the scheduled payment over the remaining term.</p>
                 <p>The <a href="https://www.gov.uk/lifetime-isa/withdrawing-money-from-your-lifetime-isa">Lifetime ISA</a> can fund spending from age 60. New investment contributions after the move go outside the UK ISA, following the <a href="https://www.gov.uk/individual-savings-accounts/if-you-move-abroad">UK non-resident ISA rules</a>.</p>
                 <p>Verify your <a href="https://www.gov.uk/check-state-pension">State Pension forecast</a> and <a href="https://www.gov.uk/hmrc-internal-manuals/pensions-tax-manual/ptm028000">private pension access age</a>. The normal minimum pension age rises from 55 to 57 on 6 April 2028. Enter a scheme-specific age where applicable.</p>
             </details>

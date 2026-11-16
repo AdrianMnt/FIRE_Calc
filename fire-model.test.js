@@ -25,6 +25,58 @@ function close(actual, expected, tolerance = 0.01) {
     assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} differs from ${expected}`);
 }
 
+test('the all-in budget remains constant during and after mortgage payoff', () => {
+    const p = prepare({ ...neutral, horizonAge: 51, ukBudgetIncludesMortgage: true,
+        startingCash: 1200, mortgageRemaining: 300, mortgageBase: 100, targetIncome: 1200 });
+    const { rows, success } = simulate(p, fullNow, { record: true });
+    assert.equal(success, true);
+    assert.equal(rows[1].budgetGap, 100);
+    assert.equal(rows[3].mortgage, 0);
+    assert.equal(rows[4].budgetGap, 100);
+    assert.equal(rows.at(-1).cash, 0);
+});
+
+test('voluntary overpayments are extra and required payments above budget are funded in full', () => {
+    const p = prepare({ ...neutral, horizonAge: 51, ukBudgetIncludesMortgage: true, netIncome: 175,
+        livingExpenses: 150, mortgageRemaining: 1000, mortgageBase: 100, mortgageOverpay: 25,
+        mortgageTerm: 0.25, targetIncome: 1800 });
+    const work = simulate(p, workForever, { record: true }).rows;
+    assert.equal(work[1].surplus, 0);
+    assert.equal(work[2].surplus, 0);
+    assert.equal(work[3].mortgageCost, 750);
+    assert.equal(work[3].shortfall, 575);
+});
+
+test('mortgage rate resets once and reamortises the actual balance over the remaining term', () => {
+    const p = prepare({ ...neutral, horizonAge: 51, mortgageRemaining: 1200, mortgageBase: 100,
+        mortgageTerm: 1, mortgageResetMonth: 2, mortgageResetRate: 12, netIncome: 200 });
+    const { rows, success } = simulate(p, workForever, { record: true });
+    const scheduled = 1000 * .01 / (1 - 1.01 ** -10);
+    assert.equal(success, true);
+    close(rows[2].mortgage, 1000);
+    close(rows[2].mortgageCost, 100);
+    close(rows[3].mortgageCost, scheduled);
+    close(rows[3].mortgage, 1010 - scheduled);
+    close(rows[11].mortgageCost, scheduled);
+    close(rows[12].mortgageCost, scheduled);
+    const manual = simulate({ ...p, mortgageResetPayment: 150 }, workForever, { record: true }).rows;
+    close(manual[3].mortgageCost, 150);
+    assert.throws(() => prepare({ ...neutral, mortgageResetMonth: 1.5 }), /whole number/);
+});
+
+test('two UK start ages give independent whole-pound minimum incomes through the horizon', () => {
+    const fixture = { ...moveFixture, startingCash: 300, horizonAge: 51, partTimeEndAge: 50.5,
+        partTimeNet: 200, partTimeGross: 200, targetIncome: 1200 };
+    const [now, later, firstMove, secondMove] = decision(fixture, {
+        ukAge: 50, laterUkAge: 50.25, moveAge: 50.25, lowerPrice: 75000, higherPrice: 90000
+    });
+    assert.equal(now.minimumPay, 150);
+    assert.equal(later.minimumPay, 200);
+    assert.equal(firstMove.plan.mode, 'full');
+    assert.equal(secondMove.plan.mode, 'full');
+    assert.equal(simulate({ ...now.p, partTimeNet: 149, partTimeGross: 149 }, now.plan).success, false);
+});
+
 test('annual overpayments use available cash after regular payment, repeat, and stop after full-time work', () => {
     const p = prepare({ ...neutral, horizonAge: 53, mortgageRemaining: 10000, mortgageBase: 100,
         netIncome: 150, monthlyCash: 50, startingCash: 500, annualOverpayRate: 10,

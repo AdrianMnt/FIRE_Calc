@@ -8,6 +8,7 @@ const FireModel = ((tax) => {
         startingCash: 10000, startingLisa: 0, cashInterest: 0, homeValue: 250000, otherAssets: 0, otherDebt: 0,
         mortgageRemaining: 150000, mortgageBase: 800, mortgageOverpay: 200,
         mortgageRate: 4, mortgageTerm: 25, redirectMortgage: false,
+        mortgageResetMonth: 0, mortgageResetRate: 5, mortgageResetPayment: 0, ukBudgetIncludesMortgage: false,
         annualOverpayRate: 0, firstAnnualOverpayMonth: 12,
         netIncome: 3500, livingExpenses: 1700, monthlyCash: 0, monthlyIsa: 500, workplacePension: 600,
         monthlySipp: 0, sippGrossFactor: 1, grossReturn: 7, fees: 0.25, inflation: 2.5,
@@ -48,6 +49,9 @@ const FireModel = ((tax) => {
             || !['rest', 'scotland'].includes(p.region)) {
             throw new Error('Check the tax region and return, inflation, fee and savings rates.');
         }
+        if (!Number.isInteger(p.mortgageResetMonth) || p.mortgageResetMonth > 102 * 12 || p.mortgageResetRate > 100) {
+            throw new Error('Use a whole number of months to the new mortgage rate, and a rate up to 100%.');
+        }
         if (p.annualOverpayRate > 100 || !Number.isInteger(p.firstAnnualOverpayMonth)
             || p.firstAnnualOverpayMonth < 1 || p.firstAnnualOverpayMonth > 102 * 12) {
             throw new Error('Use an annual overpayment percentage up to 100 and a whole number of months until the first payment.');
@@ -82,7 +86,7 @@ const FireModel = ((tax) => {
     function initial(p) {
         return {
             isa: p.startingIsa, lisa: p.startingLisa, taxable: 0, home: p.homeValue, cash: p.startingCash, pension: p.startingPension, drawdown: 0,
-            mortgage: p.mortgageRemaining, allowance: p.lumpSumAllowance, lumpTaken: false
+            mortgage: p.mortgageRemaining, regularPayment: p.mortgageBase, allowance: p.lumpSumAllowance, lumpTaken: false
         };
     }
 
@@ -93,10 +97,26 @@ const FireModel = ((tax) => {
         return 'Retired';
     }
 
-    function mortgagePayment(balance, p, m, working) {
-        const due = balance * (1 + p.mortgageRate / 1200);
-        const scheduled = p.mortgageBase + (working ? p.mortgageOverpay : 0);
-        return m + 1 >= p.maturity ? due : Math.min(due, scheduled);
+    function serviceMortgage(s, p, m, working) {
+        const reset = p.mortgageResetMonth > 0 && m >= p.mortgageResetMonth;
+        const rate = (reset ? p.mortgageResetRate : p.mortgageRate) / 1200;
+        if (reset && m === p.mortgageResetMonth) {
+            const term = p.maturity - m;
+            if (p.mortgageResetPayment > 0) s.regularPayment = p.mortgageResetPayment;
+            else if (Number.isFinite(term) && term > 0) {
+                s.regularPayment = rate > 0 ? s.mortgage * rate / (1 - (1 + rate) ** -term) : s.mortgage / term;
+            }
+        }
+        const due = s.mortgage * (1 + rate);
+        const scheduled = s.regularPayment + (working ? p.mortgageOverpay : 0);
+        const paid = m + 1 >= p.maturity ? due : Math.min(due, scheduled);
+        s.mortgage = Math.max(0, due - paid);
+        const extra = m + 1 >= p.maturity ? 0 : Math.max(0, paid - s.regularPayment);
+        return { paid, extra };
+    }
+
+    function householdOutgoings(budget, mortgage, includesMortgage) {
+        return includesMortgage ? Math.max(budget, mortgage) : budget + mortgage;
     }
 
     function takeLumpSum(s, p, price) {
@@ -197,8 +217,7 @@ const FireModel = ((tax) => {
                 return flow;
             }
         }
-        const paid = mortgagePayment(s.mortgage, p, m, working);
-        s.mortgage = Math.max(0, s.mortgage * (1 + p.mortgageRate / 1200) - paid);
+        const { paid, extra } = serviceMortgage(s, p, m, working);
         const mortgageCost = paid / price;
         flow.mortgageCost = mortgageCost;
 
@@ -209,11 +228,13 @@ const FireModel = ((tax) => {
             const pay = abroad ? (working ? p.abroadNetIncome : p.abroadCoastNet)
                 : (!working && p.useCoastNet ? p.coastNet : p.netIncome);
             const living = abroad ? p.abroadLiving + p.abroadHealthcare : p.livingExpenses;
-            flow.surplus = pay - living - mortgageCost - plannedInvestment - savingCash - sippCost;
+            const regularCost = mortgageCost - extra / price;
+            const outgoings = householdOutgoings(living, regularCost, !abroad && p.ukBudgetIncludesMortgage) + extra / price;
+            flow.surplus = pay - outgoings - plannedInvestment - savingCash - sippCost;
             flow.shortfall = Math.max(0, -flow.surplus);
             if (flow.shortfall <= penny && working) {
                 const formerPayment = !abroad && p.mortgageRemaining > 0 && p.redirectMortgage
-                    ? Math.max(0, (p.mortgageBase + p.mortgageOverpay - paid) / price) : 0;
+                    ? Math.max(0, (s.regularPayment + p.mortgageOverpay - paid) / price) : 0;
                 const redirected = Math.min(Math.max(0, flow.surplus), formerPayment);
                 if (abroad) s.taxable += plannedInvestment;
                 else {
@@ -235,7 +256,8 @@ const FireModel = ((tax) => {
             const budget = abroad ? p.abroadRetirement / 12 + p.abroadHealthcare : ukBudget;
             if (partTime && !abroad) s.pension += p.partTimePension;
             const spend = budget * (1 + (buffered ? p.overFundBuffer / 100 : 0));
-            let need = spend + mortgageCost - netPay - stateGross + flow.tax;
+            const outgoings = householdOutgoings(spend, mortgageCost, !abroad && p.ukBudgetIncludesMortgage);
+            let need = outgoings - netPay - stateGross + flow.tax;
             flow.budgetGap = need;
             if (!abroad && m >= p.access) takeLumpSum(s, p, price);
 
@@ -420,10 +442,11 @@ const FireModel = ((tax) => {
     }
 
     // Compare exact dates, including plans that the earliest-date search cannot fund.
-    function decision(inputs, { ukAge, moveAge, lowerPrice, higherPrice, realReturn = null }) {
+    function decision(inputs, { ukAge, laterUkAge = null, moveAge, lowerPrice, higherPrice, realReturn = null }) {
         const base = prepare({ ...inputs, relocate: false });
         const ukStart = decisionMonth(base, ukAge, 'UK part-time');
-        const moveStart = decisionMonth(base, moveAge, 'Romania move');
+        const moveStart = decisionMonth(base, moveAge, 'relocation');
+        const laterUkStart = laterUkAge === null ? ukStart : decisionMonth(base, laterUkAge, 'second UK part-time');
         if (![lowerPrice, higherPrice].every(price => Number.isFinite(price) && price >= 0 && price <= 1e10)
             || lowerPrice > higherPrice) {
             throw new Error('Enter two positive or zero purchase prices, in ascending order.');
@@ -439,19 +462,26 @@ const FireModel = ((tax) => {
             }
             const plan = { mode, start };
             const run = simulate(p, plan, { record: true, buffered: true });
-            const transition = run.rows[start];
+            const opening = run.rows[start];
+            const transition = opening?.shortfall > penny ? undefined : opening;
             const first = run.rows[start + 1];
             const last = run.rows.at(-1);
             const purchase = first?.relocation;
             const failure = !run.success && !run.mortgageOutstanding ? last : null;
-            const constraint = !transition ? null : mode === 'partTime' && p.partTimeNet <= 0 ? 'pay'
-                : canStart(p, mode, start, transition.mortgage) ? null
-                : mode === 'partTime' && start >= p.partTimeEnd ? 'partTimeEnd'
-                : mode === 'partTime' && p.partTimeAfterMortgage && transition.mortgage > penny ? 'mortgageGate'
-                : 'minimumYears';
+            let constraint = null;
+            if (transition && mode === 'partTime') {
+                if (start >= p.partTimeEnd) constraint = 'partTimeEnd';
+                else if (p.partTimeAfterMortgage && transition.mortgage > penny) constraint = 'mortgageGate';
+                else if (p.minimumRetirement && p.partTimeEnd > p.duration - p.minimumRetirement) constraint = 'minimumYears';
+                else if (p.partTimeNet <= 0) constraint = 'pay';
+            } else if (transition && !canStart(p, mode, start, transition.mortgage)) {
+                constraint = 'minimumYears';
+            }
             const bridge = purchase?.shortfall <= penny ? bridgeBudget(p, plan, purchase) : null;
+            const minimumPay = mode === 'partTime' && transition && (!constraint || constraint === 'pay')
+                ? minimumPartTimePay(p, plan) : null;
             return {
-                p, plan, transition, constraint, bridge, success: run.success && constraint === null,
+                p, plan, transition, constraint, bridge, minimumPay, success: run.success && constraint === null,
                 mortgageOutstanding: run.mortgageOutstanding, failure,
                 last, purchase, firstGap: first?.relocation?.shortfall > penny ? null : first?.budgetGap,
                 availableAfterPurchase: purchase && purchase.shortfall <= penny ? purchase.available + purchase.net : null,
@@ -462,7 +492,25 @@ const FireModel = ((tax) => {
         const uk = evaluate(base, 'partTime', ukStart);
         const moves = [lowerPrice, higherPrice].map(replacementHome =>
             evaluate(prepare({ ...inputs, relocate: true, moveAge, replacementHome }), 'full', moveStart));
-        return [uk, ...moves];
+        return laterUkStart === ukStart ? [uk, ...moves] : [uk, evaluate(base, 'partTime', laterUkStart), ...moves];
+    }
+
+    function minimumPartTimePay(p, plan) {
+        // Keep the entered gross-to-net difference fixed for the annualised tax estimate.
+        const deductions = p.partTimeGross - p.partTimeNet;
+        const funded = net => simulate({ ...p, partTimeNet: net, partTimeGross: net + deductions },
+            plan, { buffered: true }).success;
+        if (funded(0)) return 0;
+        let low = 0;
+        let high = Math.max(1000, Math.ceil(p.partTimeNet));
+        while (high < 1e10 && !funded(high)) high *= 2;
+        if (high >= 1e10 && !funded(high)) return null;
+        while (high - low > 1) {
+            const probe = Math.floor((low + high) / 2);
+            if (funded(probe)) high = probe;
+            else low = probe;
+        }
+        return high;
     }
 
     function bridgeBudget(p, plan, purchase) {

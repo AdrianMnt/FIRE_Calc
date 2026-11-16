@@ -364,4 +364,18 @@ dialog::backdrop { background: #070b14b5; }
 .decision-card dl > div { padding: .38rem 0; border-top: 1px solid var(--line); }
 .decision-card dt { font-size: .77rem; }
 .decision-card dd { margin: .04rem 0 0; font-size: .96rem; font-variant-numeric: tabular-nums; }
+.decision-card dl > .minimum-pay {
+    margin-bottom: .35rem;
+    padding: .55rem .65rem;
+    border: 1px solid var(--line);
+    border-radius: .5rem;
+    background: color-mix(in srgb, var(--location) 8%, var(--panel));
+}
+.minimum-pay dd { font-size: clamp(1.25rem, 2vw, 1.55rem); color: var(--location); }
+.section-links { display: flex; flex-wrap: wrap; gap: .3rem .8rem; margin: .65rem 0 .35rem; font-size: .86rem; }
+.section-links a { padding: .22rem 0; text-underline-offset: .18em; }
+#decision-title, #assumptions-title, #projection-title { scroll-margin-top: 1rem; }
+@media (min-width: 1060px) {
+    .decision-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 #comparison td:last-child { min-width: 16rem; white-space: normal; text-align: left; }
